@@ -22,9 +22,9 @@ def get_random_kcnf(k, n, m):
 
 
 def get_random_kcnfs(sample_number, clause_size, variable_number,
-                     clause_number):
+                     clause_number, min_clause_number=1):
     rcnfs = [get_random_kcnf(clause_size, variable_number,
-                             random.randint(1, clause_number))
+                             random.randint(min_clause_number, clause_number))
              for _ in range(sample_number)]
     return rcnfs
 
