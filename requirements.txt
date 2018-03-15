@@ -30,7 +30,7 @@ mpmath==1.0.0             # via sympy
 nbconvert==5.3.1          # via notebook
 nbformat==4.4.0           # via nbconvert, notebook
 notebook==5.4.0           # via jupyterlab, jupyterlab-launcher
-numpy==1.14.2             # via tensorboard, tensorflow
+numpy==1.14.2             # via scipy, tensorboard, tensorflow
 pandocfilters==1.4.2      # via nbconvert
 parso==0.1.1              # via jedi
 pexpect==4.4.0            # via ipython
@@ -41,9 +41,12 @@ ptyprocess==0.5.2         # via pexpect, terminado
 pygments==2.2.0           # via ipython, nbconvert
 python-dateutil==2.7.0    # via jupyter-client
 pyzmq==17.0.0             # via jupyter-client
+scikit-learn==0.19.1      # via sklearn
+scipy==1.0.0
 send2trash==1.5.0         # via notebook
 simplegeneric==0.8.1      # via ipython
 six==1.11.0               # via absl-py, bleach, grpcio, html5lib, prompt-toolkit, protobuf, python-dateutil, tensorboard, tensorflow, traitlets
+sklearn==0.0
 sympy==1.1.1
 tensorboard==1.6.0        # via tensorflow
 tensorflow==1.6.0
