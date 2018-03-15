@@ -71,6 +71,10 @@ class CNF(object):
         return simplify_logic(parse_expr(str(self)))
 
     def satisfiable(self):
+        if self.is_false():
+            return False
+        if self.is_true():
+            return True
         return bool(satisfiable(self.to_sympy()))
 
     def set_var(self, v):
@@ -90,6 +94,14 @@ class CNF(object):
         if not existed:
             raise ValueError("Variable didn't exist.")
         return CNF(new_clauses)
+
+    def get_correct_steps(self):
+        correct = set()
+        for v in self.vars:
+            for sv in [v, -v]:
+                if self.set_var(sv).satisfiable():
+                    correct.add(sv)
+        return correct
 
     def is_true(self):
         return not self.clauses
