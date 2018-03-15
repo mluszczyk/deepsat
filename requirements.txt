@@ -26,6 +26,7 @@ jupyterlab==0.31.12
 markdown==2.6.11          # via tensorboard
 markupsafe==1.0           # via jinja2
 mistune==0.8.3            # via nbconvert
+mpmath==1.0.0             # via sympy
 nbconvert==5.3.1          # via notebook
 nbformat==4.4.0           # via nbconvert, notebook
 notebook==5.4.0           # via jupyterlab, jupyterlab-launcher
@@ -43,6 +44,7 @@ pyzmq==17.0.0             # via jupyter-client
 send2trash==1.5.0         # via notebook
 simplegeneric==0.8.1      # via ipython
 six==1.11.0               # via absl-py, bleach, grpcio, html5lib, prompt-toolkit, protobuf, python-dateutil, tensorboard, tensorflow, traitlets
+sympy==1.1.1
 tensorboard==1.6.0        # via tensorflow
 tensorflow==1.6.0
 termcolor==1.1.0          # via tensorflow
