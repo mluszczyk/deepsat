@@ -109,17 +109,19 @@ class Graph:
         # zero out policy for test when UNSAT
         # requires sat_labels to be provided, so needs to be a separate tensor in order 
         # for inference to work
-        self.policy_logits_for_test = tf.expand_dims(self.sat_labels, axis=1) * self.policy_logits
+        self.policy_logits_for_cmp = tf.expand_dims(self.sat_labels, axis=1) * self.policy_logits
         
         self.policy_loss = tf.losses.sigmoid_cross_entropy(
-            self.policy_labels, self.policy_logits_for_test) 
+            self.policy_labels, self.policy_logits_for_cmp) 
         self.policy_probabilities = tf.sigmoid(self.policy_logits)
+        self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
         
         self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
         self.sat_probabilities = tf.sigmoid(self.sat_logits)
         
-        self.policy_error = tf.reduce_mean(tf.abs(
-            tf.round(self.policy_probabilities) - self.policy_labels))
+        self.policy_error = tf.reduce_sum(tf.abs(
+            tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
+              tf.reduce_sum(self.sat_labels))
         self.sat_error = tf.reduce_mean(tf.abs(
             tf.round(self.sat_probabilities) - self.sat_labels))
         
