@@ -2,9 +2,7 @@ import random
 from typing import List, Tuple, Set
 from random import randint, choice
 
-from sympy.logic import simplify_logic
-from sympy.logic.inference import satisfiable
-from sympy.parsing.sympy_parser import parse_expr
+import pycosat
 
 
 def get_random_kcnf(k, n, m):
@@ -64,18 +62,8 @@ class CNF(object):
         tokens.pop()
         return ''.join(tokens)
 
-    def to_sympy(self):
-        return parse_expr(str(self))
-
-    def simplified(self):
-        return simplify_logic(parse_expr(str(self)))
-
     def satisfiable(self):
-        if self.is_false():
-            return False
-        if self.is_true():
-            return True
-        return bool(satisfiable(self.to_sympy()))
+        return pycosat.solve(self.clauses) != 'UNSAT'
 
     def set_var(self, v):
         av = abs(v)
