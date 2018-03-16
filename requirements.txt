@@ -8,6 +8,7 @@ absl-py==0.1.11           # via tensorflow
 appnope==0.1.0            # via ipython
 astor==0.6.2              # via tensorflow
 bleach==1.5.0             # via nbconvert, tensorboard
+cycler==0.10.0            # via matplotlib
 decorator==4.2.1          # via ipython, traitlets
 entrypoints==0.2.3        # via nbconvert
 gast==0.2.0               # via tensorflow
@@ -23,14 +24,16 @@ jupyter-client==5.2.3     # via ipykernel, notebook
 jupyter-core==4.4.0       # via jupyter-client, nbconvert, nbformat, notebook
 jupyterlab-launcher==0.10.5  # via jupyterlab
 jupyterlab==0.31.12
+kiwisolver==1.0.1         # via matplotlib
 markdown==2.6.11          # via tensorboard
 markupsafe==1.0           # via jinja2
+matplotlib==2.2.0
 mistune==0.8.3            # via nbconvert
 mpmath==1.0.0             # via sympy
 nbconvert==5.3.1          # via notebook
 nbformat==4.4.0           # via nbconvert, notebook
 notebook==5.4.0           # via jupyterlab, jupyterlab-launcher
-numpy==1.14.2             # via scipy, tensorboard, tensorflow
+numpy==1.14.2             # via matplotlib, scipy, tensorboard, tensorflow
 pandocfilters==1.4.2      # via nbconvert
 parso==0.1.1              # via jedi
 pexpect==4.4.0            # via ipython
@@ -39,13 +42,15 @@ prompt-toolkit==1.0.15    # via ipython
 protobuf==3.5.2           # via grpcio, tensorboard, tensorflow
 ptyprocess==0.5.2         # via pexpect, terminado
 pygments==2.2.0           # via ipython, nbconvert
-python-dateutil==2.7.0    # via jupyter-client
+pyparsing==2.2.0          # via matplotlib
+python-dateutil==2.7.0    # via jupyter-client, matplotlib
+pytz==2018.3              # via matplotlib
 pyzmq==17.0.0             # via jupyter-client
 scikit-learn==0.19.1      # via sklearn
 scipy==1.0.0
 send2trash==1.5.0         # via notebook
 simplegeneric==0.8.1      # via ipython
-six==1.11.0               # via absl-py, bleach, grpcio, html5lib, prompt-toolkit, protobuf, python-dateutil, tensorboard, tensorflow, traitlets
+six==1.11.0               # via absl-py, bleach, cycler, grpcio, html5lib, matplotlib, prompt-toolkit, protobuf, python-dateutil, tensorboard, tensorflow, traitlets
 sklearn==0.0
 sympy==1.1.1
 tensorboard==1.6.0        # via tensorflow

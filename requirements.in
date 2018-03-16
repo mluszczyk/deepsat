@@ -3,3 +3,4 @@ tensorflow
 sympy
 sklearn
 scipy  # implicitly reqiuired by sklearn
+matplotlib
