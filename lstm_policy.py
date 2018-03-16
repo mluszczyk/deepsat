@@ -121,7 +121,7 @@ class Graph:
         
         self.policy_error = tf.reduce_sum(tf.abs(
             tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
-              tf.reduce_sum(self.sat_labels))
+              tf.reduce_sum(self.sat_labels)) / (VARIABLE_NUM * 2)
         self.sat_error = tf.reduce_mean(tf.abs(
             tf.round(self.sat_probabilities) - self.sat_labels))
         
