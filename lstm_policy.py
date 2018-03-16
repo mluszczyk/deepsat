@@ -30,7 +30,7 @@ def pad_and_concat(sequences):  # sequences shape: [batch_size, len, dims...] ->
 # In[4]:
 
 
-SAMPLE = 10000
+SAMPLE = 100000
 VARIABLE_NUM = 4
 EMBEDDING_SIZE = 8
 CLAUSE_SIZE = 3
