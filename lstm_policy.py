@@ -118,7 +118,12 @@ class Graph:
         
         self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
         self.sat_probabilities = tf.sigmoid(self.sat_logits)
-        
+
+        self.policy_top1_error = 1.0 - tf.reduce_sum(tf.gather_nd(
+            self.policy_labels,
+            tf.stack([tf.range(batch_size), tf.argmax(self.policy_probabilities_for_cmp, axis=1, output_type=tf.int32)],
+                     axis=1))) / (tf.reduce_sum(self.sat_labels))
+
         self.policy_error = tf.reduce_sum(tf.abs(
             tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
               tf.reduce_sum(self.sat_labels)) / (VARIABLE_NUM * 2)
@@ -130,6 +135,7 @@ class Graph:
         tf.summary.scalar("loss", self.loss)
         tf.summary.scalar("policy_loss", self.policy_loss)
         tf.summary.scalar("policy_error", self.policy_error)
+        tf.summary.scalar("policy_top1_error", self.policy_top1_error)
         tf.summary.scalar("sat_loss", self.sat_loss)
         tf.summary.scalar("sat_error", self.sat_error)
 
