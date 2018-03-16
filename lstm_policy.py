@@ -12,7 +12,6 @@ import numpy as np
 
 
 from sklearn.model_selection import train_test_split
-from matplotlib import pyplot as plt
 from sklearn.utils import shuffle
 
 
@@ -186,22 +185,14 @@ def sat_array():
 print("info:", SAMPLE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM)
 
 cnfs = get_random_kcnfs(SAMPLE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM, min_clause_number=3)
-plt.title("original cnfs: {}".format(len(cnfs)))
-plt.hist([len(cnf.clauses) for cnf in cnfs], bins=range(CLAUSE_NUM+2))
-plt.xlabel("num of clauses")
-plt.show()
+print("generated cnfs")
 sat_labels = [cnf.satisfiable() for cnf in cnfs]
-# plt.title("sat cnfs: {}".format(len(cnfs)))
-# plt.hist([len(cnf.clauses) for cnf in cnfs], bins=range(CLAUSE_NUM+2))
-# plt.xlabel("num of clauses")
-# plt.show()
-# print("#samples:", len(cnfs))
-# assert len(cnfs) * 2 > SAMPLE
 
 
 # In[11]:
 
 
+print("calculating policies")
 labels = []
 for cnf, is_satisfiable in zip(cnfs, sat_labels):
     if is_satisfiable:
@@ -232,20 +223,6 @@ print(len(labels))
 print(len(sat_labels))
 
 
-# In[13]:
-
-
-print(sat_labels)
-
-
-# In[14]:
-
-
-plt.title("num of clauses vs %correct steps")
-plt.scatter([len(cnf.clauses) for cnf in cnfs], [sum(label)/2./VARIABLE_NUM for label in labels], alpha=0.5)
-plt.xlabel("num of clauses")
-plt.ylabel("percent of correct steps")
-plt.show()
 
 
 # In[15]:
