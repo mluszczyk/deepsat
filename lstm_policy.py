@@ -1,21 +1,29 @@
-
 # coding: utf-8
-
-# In[1]:
-
+from functools import wraps
 
 import tensorflow as tf
 import numpy as np
 
-
-# In[2]:
-
-
-from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
+from cnf import get_random_kcnfs
 
 
-# In[3]:
+import datetime
+import time
+
+from tensorflow.core.framework import summary_pb2
+
+LAST_TIMED = dict()
+
+
+def timed(func):
+    @wraps(func)
+    def new_func(*args, **kwargs):
+        start = time.time()
+        results = func(*args, **kwargs)
+        end = time.time()
+        LAST_TIMED[func.__name__] = end - start
+        return results
+    return new_func
 
 
 def pad_and_concat(sequences):  # sequences shape: [batch_size, len, dims...] -> ([batch_size, maxlen, dims...], [len])
@@ -30,15 +38,19 @@ def pad_and_concat(sequences):  # sequences shape: [batch_size, len, dims...] ->
 # In[4]:
 
 
-SAMPLE = 100000
 VARIABLE_NUM = 4
 EMBEDDING_SIZE = 8
 CLAUSE_SIZE = 3
 CLAUSE_NUM = 30
+MIN_CLAUSE_NUM = 1
 LSTM_STATE_SIZE = 8
-batch_size = 64
+
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
+BATCH_SIZE = 64
+
+SAMPLES = 10 ** 6
+STEPS = int(SAMPLES/BATCH_SIZE) + 1
 
 
 # In[5]:
@@ -54,10 +66,10 @@ def assert_shape(matrix, shape: list):
 
 class Graph:
     def __init__(self):
-        self.inputs = tf.placeholder(tf.int32, shape=(batch_size, None, CLAUSE_SIZE), name='inputs')
-        self.lengths = tf.placeholder(tf.int32, shape=(batch_size,), name='lengths')
-        self.policy_labels = tf.placeholder(tf.float32, shape=(batch_size, VARIABLE_NUM*2), name='policy_labels')
-        self.sat_labels = tf.placeholder(tf.float32, shape=(batch_size,), name='sat_labels')
+        self.inputs = tf.placeholder(tf.int32, shape=(BATCH_SIZE, None, CLAUSE_SIZE), name='inputs')
+        self.lengths = tf.placeholder(tf.int32, shape=(BATCH_SIZE,), name='lengths')
+        self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM * 2), name='policy_labels')
+        self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
         
         vars_ = tf.abs(self.inputs)
         signs = tf.cast(tf.sign(self.inputs), tf.float32)  # shape: [batch_size, None, CLAUSE_SIZE]
@@ -68,25 +80,25 @@ class Graph:
         # var_embeddings shape: [None, None, CLAUSE_SIZE, EMBEDDING_SIZE]
         
         clause_preembeddings = tf.concat(
-            [tf.reshape(var_embeddings, [batch_size, -1, CLAUSE_SIZE * EMBEDDING_SIZE]), 
+            [tf.reshape(var_embeddings, [BATCH_SIZE, -1, CLAUSE_SIZE * EMBEDDING_SIZE]),
              signs],
             axis=2)
         
         PREEMBEDDING_SIZE = EMBEDDING_SIZE * CLAUSE_SIZE + CLAUSE_SIZE
-        assert_shape(clause_preembeddings, 
-                     [batch_size, None, PREEMBEDDING_SIZE])
+        assert_shape(clause_preembeddings,
+                     [BATCH_SIZE, None, PREEMBEDDING_SIZE])
         
         clause_w = tf.Variable(tf.random_normal(
             [PREEMBEDDING_SIZE, EMBEDDING_SIZE]), name='clause_w')
         clause_b = tf.Variable(tf.random_normal([EMBEDDING_SIZE]), name='clause_b')
         clause_embeddings = tf.reshape(tf.sigmoid(
             tf.reshape(clause_preembeddings, [-1, PREEMBEDDING_SIZE]) @ clause_w + clause_b), 
-                                       [batch_size, -1, EMBEDDING_SIZE])
+                                       [BATCH_SIZE, -1, EMBEDDING_SIZE])
         # shape: [None, None, EMBEDDING_SIZE]
         
         lstm = tf.contrib.rnn.BasicLSTMCell(LSTM_STATE_SIZE)
-        hidden_state = tf.zeros([batch_size, LSTM_STATE_SIZE])
-        current_state = tf.zeros([batch_size, LSTM_STATE_SIZE])
+        hidden_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
+        current_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
         state = hidden_state, current_state
         
         _, lstm_final_state = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32, 
@@ -94,7 +106,7 @@ class Graph:
                                                )
         formula_embedding = lstm_final_state.h
             
-        assert_shape(formula_embedding, [batch_size, LSTM_STATE_SIZE])
+        assert_shape(formula_embedding, [BATCH_SIZE, LSTM_STATE_SIZE])
             
         softmax_w = tf.Variable(tf.random_normal([LSTM_STATE_SIZE, VARIABLE_NUM*2]), name='softmax_w')
         softmax_b = tf.Variable(tf.random_normal([VARIABLE_NUM*2]), name='softmax_b')
@@ -121,7 +133,7 @@ class Graph:
 
         self.policy_top1_error = 1.0 - tf.reduce_sum(tf.gather_nd(
             self.policy_labels,
-            tf.stack([tf.range(batch_size), tf.argmax(self.policy_probabilities_for_cmp, axis=1, output_type=tf.int32)],
+            tf.stack([tf.range(BATCH_SIZE), tf.argmax(self.policy_probabilities_for_cmp, axis=1, output_type=tf.int32)],
                      axis=1))) / (tf.reduce_sum(self.sat_labels))
 
         self.policy_error = tf.reduce_sum(tf.abs(
@@ -146,6 +158,8 @@ model = Graph()
 # In[20]:
 
 
+print()
+print("PARAMETERS")
 total_parameters = 0
 for variable in tf.trainable_variables():
     # shape is an array of tf.Dimension
@@ -158,7 +172,7 @@ for variable in tf.trainable_variables():
         variable_parameters *= dim.value
     print(variable_parameters)
     total_parameters += variable_parameters
-print(total_parameters)
+print("TOTAL PARAMS:", total_parameters)
 
 
 # In[7]:
@@ -167,140 +181,102 @@ print(total_parameters)
 np.set_printoptions(precision=2, suppress=True)
 
 
-# In[8]:
+@timed
+def gen_labels(cnfs):
+    sat_labels = [cnf.satisfiable() for cnf in cnfs]
+
+    policy_labels = []
+    for cnf, is_satisfiable in zip(cnfs, sat_labels):
+        if is_satisfiable:
+            correct_steps = cnf.get_correct_steps()
+            label = []
+            # for every variable, for true, then for false
+            for v in range(1, VARIABLE_NUM+1):
+                for sv in [v, -v]:
+                    result = 1.0 if sv in correct_steps else 0.0
+                    label.append(result)
+            policy_labels.append(label)
+        else:
+            policy_labels.append([0 for _ in range(VARIABLE_NUM * 2)])
+
+    assert all(len(label) == 2 * VARIABLE_NUM for label in policy_labels)
+    sat_steps = sum(sum(label) for label in policy_labels)
+    unsat_steps = len(cnfs) * 2 * VARIABLE_NUM - sat_steps
+    assert unsat_steps * 4 > sat_steps
+    assert len(cnfs) == len(sat_labels) == len(policy_labels)
+
+    return sat_labels, policy_labels
 
 
-from cnf import get_random_kcnfs
+@timed
+def gen_cnfs_with_labels():
+    cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
+                            min_clause_number=MIN_CLAUSE_NUM)
+    sat_labels, policy_labels = gen_labels(cnfs)
+    return cnfs, sat_labels, policy_labels
 
 
-# In[9]:
-
-
-def sat_array():
-    for k in range(1, 6):
-        for var_num in range(2, 5):
-            for clause_num in range(3, 10):
-                sat = {True: 0, False: 0}
-                for _ in range(100):
-                    sat[cnf.get_random_kcnf(k, var_num, clause_num).satisfiable()] += 1
-                print(k, var_num, clause_num, sat)
-# sat_array()
-
-
-# In[10]:
-
-
-print("info:", SAMPLE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM)
-
-cnfs = get_random_kcnfs(SAMPLE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM, min_clause_number=3)
-print("generated cnfs")
-sat_labels = [cnf.satisfiable() for cnf in cnfs]
-
-
-# In[11]:
-
-
-print("calculating policies")
-labels = []
-for cnf, is_satisfiable in zip(cnfs, sat_labels):
-    if is_satisfiable:
-        correct_steps = cnf.get_correct_steps()
-        label = []
-        # for every variable, for true, then for false
-        for v in range(1, VARIABLE_NUM+1):
-            for sv in [v, -v]:
-                result = 1.0 if sv in correct_steps else 0.0
-                label.append(result)
-        labels.append(label)
-    else:
-        labels.append([0 for _ in range(VARIABLE_NUM * 2)])
-        
-assert all(len(label) == 2*VARIABLE_NUM for label in labels)
-sat_steps = sum(sum(label) for label in labels)
-unsat_steps = len(cnfs)*2*VARIABLE_NUM - sat_steps
-print("SAT/UNSAT steps: {} / {}".format(sat_steps, unsat_steps))
-assert unsat_steps * 4 > sat_steps
-print("labels generated")
-
-
-# In[12]:
-
-
-print(len(cnfs))
-print(len(labels))
-print(len(sat_labels))
-
-
-
-
-# In[15]:
-
-
-cnfs_train, cnfs_test, labels_train, labels_test, sat_labels_train, sat_labels_test = train_test_split(cnfs, labels, sat_labels)
-
-
-# In[16]:
-
-
-def chunks(lists, chunk_size):
-    return [[it[i:i + chunk_size] for it in lists] for i in range(0, len(lists[0]), chunk_size)]
-
-
-# In[19]:
-
-
-import datetime
 merged_summaries = tf.summary.merge_all()
 
 SUMMARY_DIR = "summaries"
-MODEL_NAME = "policyandval"
+MODEL_NAME = "activepolicy"
 DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
 SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
 train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
 test_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-test")
 
-NAME = "{} {}-SATs with {} vars and {} clauses".format(len(cnfs), CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM)
 
 with tf.Session() as sess:
     train_op = tf.train.AdamOptimizer(learning_rate=0.01).minimize(model.loss)
     sess.run(tf.global_variables_initializer())
-    
-    EPOCHS = 100
-    global_step = 0
-    for epoch_num in range(EPOCHS):
-        print("Epoch", epoch_num)
-        losses = []
-        accs = []
-        test_losses = []
-        test_accs = []
-        cnfs_train, labels_train, sat_labels_train = shuffle(cnfs_train, labels_train, sat_labels_train)
-        for (batch_cnfs, batch_labels, batch_sat_labels) in chunks(
-                (cnfs_train, labels_train, sat_labels_train), batch_size):
-            if len(batch_cnfs) < batch_size:
-                continue
-            inputs, lengths = pad_and_concat([cnf.clauses for cnf in batch_cnfs])
-            summary, _, loss, probs = sess.run([merged_summaries, train_op, model.loss, model.policy_probabilities], feed_dict={
-                model.inputs: inputs,
-                model.policy_labels: batch_labels,
-                model.lengths: lengths,
-                model.sat_labels: batch_sat_labels
-            })
-            train_writer.add_summary(summary, global_step)
-            
-            global_step += 1
 
-        
-        for (batch_cnfs, batch_labels, batch_sat_labels) in chunks(
-                (cnfs_test, labels_test, sat_labels_test), batch_size):
-            if len(batch_cnfs) < batch_size:
-                continue
-            inputs, lengths = pad_and_concat([cnf.clauses for cnf in batch_cnfs])
-            summary, loss, probs = sess.run([merged_summaries, model.loss, model.policy_probabilities], feed_dict={
+    @timed
+    def nn_train(cnfs, sat_labels, policy_labels):
+        inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs])
+        summary, _, loss, probs = sess.run(
+            [merged_summaries, train_op, model.loss,
+             model.policy_probabilities], feed_dict={
                 model.inputs: inputs,
-                model.policy_labels: batch_labels,
+                model.policy_labels: policy_labels,
                 model.lengths: lengths,
-                model.sat_labels: batch_sat_labels
+                model.sat_labels: sat_labels
             })
-            test_writer.add_summary(summary, global_step)
-            
+        train_writer.add_summary(summary, global_samples)
 
+    @timed
+    def complete_step():
+        cnfs, sat_labels, policy_labels = gen_cnfs_with_labels()
+        nn_train(cnfs, sat_labels, policy_labels)
+
+    global_samples = 0
+    start_time = time.time()
+    for global_batch in range(STEPS):
+        if global_batch % int(STEPS / 10) == 0 or global_batch < 100:
+            now_time = time.time()
+            time_elapsed = now_time - start_time
+            if global_batch == 0:
+                time_remaining = "unknown"
+                time_total = "unknown"
+            else:
+                time_remaining = (time_elapsed / global_batch)\
+                                 * (STEPS - global_batch)
+                time_total = time_remaining + time_elapsed
+            print("Step {}\n"
+                  "\tsteps left: {}\n"
+                  "\ttime: {} s\n"
+                  "\test remaining: {} s\n"
+                  "\test total: {} s".format(
+                global_batch, STEPS-global_batch, time_elapsed, time_remaining,
+                time_total))
+
+        complete_step()
+
+        summary_values = [
+            summary_pb2.Summary.Value(tag="time_" + fun_name,
+                                      simple_value=fun_time)
+            for fun_name, fun_time in LAST_TIMED.items()
+        ]
+        summary = summary_pb2.Summary(value=summary_values)
+        train_writer.add_summary(summary, global_samples)
+
+        global_samples += BATCH_SIZE
