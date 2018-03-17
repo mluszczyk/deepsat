@@ -16,8 +16,8 @@ CLAUSE_NUM = 30
 MIN_CLAUSE_NUM = 1
 
 # Neural net
-EMBEDDING_SIZE = 8
-LSTM_STATE_SIZE = 8
+EMBEDDING_SIZE = 32
+LSTM_STATE_SIZE = 32
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
 BATCH_SIZE = 64
@@ -250,8 +250,12 @@ with tf.Session() as sess:
 
     global_samples = 0
     start_time = time.time()
+    print_step = 1
+    print_step_multiply = 10
     for global_batch in range(STEPS):
-        if global_batch % int(STEPS / 10) == 0 or global_batch < 100:
+        if global_batch % int(STEPS / 10) == 0 or global_batch == print_step:
+            if global_batch == print_step:
+                print_step *= print_step_multiply
             now_time = time.time()
             time_elapsed = now_time - start_time
             if global_batch == 0:
@@ -261,12 +265,13 @@ with tf.Session() as sess:
                 time_remaining = (time_elapsed / global_batch)\
                                  * (STEPS - global_batch)
                 time_total = time_remaining + time_elapsed
-            print("Step {}\n"
+            print("Step {}, {}%\n"
                   "\tsteps left: {}\n"
                   "\ttime: {} s\n"
                   "\test remaining: {} s\n"
                   "\test total: {} s".format(
-                global_batch, STEPS-global_batch, time_elapsed, time_remaining,
+                global_batch, round(100.*global_batch/STEPS, 1),
+                STEPS-global_batch, time_elapsed, time_remaining,
                 time_total))
 
         complete_step()
