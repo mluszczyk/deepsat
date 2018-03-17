@@ -277,7 +277,7 @@ with tf.Session() as sess:
         complete_step()
 
         summary_values = [
-            summary_pb2.Summary.Value(tag="time_per_example" + fun_name,
+            summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
                                       simple_value=fun_time/BATCH_SIZE)
             for fun_name, fun_time in LAST_TIMED.items()
         ]
