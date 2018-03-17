@@ -1,16 +1,33 @@
 # coding: utf-8
 from functools import wraps
-
 import tensorflow as tf
 import numpy as np
-
 from cnf import get_random_kcnfs
-
-
 import datetime
 import time
-
 from tensorflow.core.framework import summary_pb2
+
+# HYPER PARAMETERES ------------------------------------------
+
+# Data properties
+VARIABLE_NUM = 4
+CLAUSE_SIZE = 3
+CLAUSE_NUM = 30
+MIN_CLAUSE_NUM = 1
+
+# Neural net
+EMBEDDING_SIZE = 8
+LSTM_STATE_SIZE = 8
+POLICY_LOSS_WEIGHT = 1
+SAT_LOSS_WEIGHT = 1
+BATCH_SIZE = 64
+
+# Size of dataset
+
+SAMPLES = 10 ** 6
+STEPS = int(SAMPLES/BATCH_SIZE) + 1
+
+# ------------------------------------------
 
 LAST_TIMED = dict()
 
@@ -32,36 +49,11 @@ def pad_and_concat(sequences):  # sequences shape: [batch_size, len, dims...] ->
     maxlen = np.max(lengths)
     arrays = [np.pad(array, [(0, maxlen - array.shape[0]), (0, 0)], 'constant', constant_values=0) for array in arrays]
     return np.asarray(arrays), lengths
-    
-
-
-# In[4]:
-
-
-VARIABLE_NUM = 4
-EMBEDDING_SIZE = 8
-CLAUSE_SIZE = 3
-CLAUSE_NUM = 30
-MIN_CLAUSE_NUM = 1
-LSTM_STATE_SIZE = 8
-
-POLICY_LOSS_WEIGHT = 1
-SAT_LOSS_WEIGHT = 1
-BATCH_SIZE = 64
-
-SAMPLES = 10 ** 6
-STEPS = int(SAMPLES/BATCH_SIZE) + 1
-
-
-# In[5]:
 
 
 def assert_shape(matrix, shape: list):
     act_shape = matrix.get_shape().as_list()
     assert act_shape == shape, "got shape {}, expected {}".format(act_shape, shape)
-
-
-# In[6]:
 
 
 class Graph:
@@ -223,8 +215,16 @@ MODEL_NAME = "activepolicy"
 DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
 SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
 train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
-test_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-test")
 
+with open(__file__, "r") as fil:
+    # ending tag is broken, because we print ourselves!
+    value = "<pre>\n" + fil.read() + "\n<" + "/pre>"
+text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
+meta = tf.SummaryMetadata()
+meta.plugin_data.plugin_name = "text"
+summary = tf.Summary()
+summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
+train_writer.add_summary(summary)
 
 with tf.Session() as sess:
     train_op = tf.train.AdamOptimizer(learning_rate=0.01).minimize(model.loss)
