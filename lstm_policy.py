@@ -10,7 +10,7 @@ from tensorflow.core.framework import summary_pb2
 # HYPER PARAMETERES ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 4
+VARIABLE_NUM = 5
 CLAUSE_SIZE = 3
 CLAUSE_NUM = 30
 MIN_CLAUSE_NUM = 1
@@ -135,11 +135,11 @@ class Graph:
         
         self.policy_loss = tf.losses.sigmoid_cross_entropy(
             self.policy_labels, self.policy_logits_for_cmp) 
-        self.policy_probabilities = tf.sigmoid(self.policy_logits)
+        self.policy_probabilities = tf.sigmoid(self.policy_logits, name='policy_prob')
         self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
         
         self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
-        self.sat_probabilities = tf.sigmoid(self.sat_logits)
+        self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
 
         self.policy_top1_error = 1.0 - tf.reduce_sum(tf.gather_nd(
             self.policy_labels,
@@ -160,35 +160,6 @@ class Graph:
         tf.summary.scalar("policy_top1_error", self.policy_top1_error)
         tf.summary.scalar("sat_loss", self.sat_loss)
         tf.summary.scalar("sat_error", self.sat_error)
-
-tf.reset_default_graph()
-model = Graph()
-
-
-# In[20]:
-
-
-print()
-print("PARAMETERS")
-total_parameters = 0
-for variable in tf.trainable_variables():
-    # shape is an array of tf.Dimension
-    shape = variable.get_shape()
-    print(shape)
-    print(len(shape))
-    variable_parameters = 1
-    for dim in shape:
-        print(dim)
-        variable_parameters *= dim.value
-    print(variable_parameters)
-    total_parameters += variable_parameters
-print("TOTAL PARAMS:", total_parameters)
-
-
-# In[7]:
-
-
-np.set_printoptions(precision=2, suppress=True)
 
 
 @timed
@@ -222,80 +193,112 @@ def gen_cnfs_with_labels():
     return cnfs, sat_labels, policy_labels
 
 
-merged_summaries = tf.summary.merge_all()
+def main():
+    tf.reset_default_graph()
+    model = Graph()
 
-SUMMARY_DIR = "summaries"
-MODEL_NAME = "activepolicy"
-DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
-SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
-train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
+    print()
+    print("PARAMETERS")
+    total_parameters = 0
+    for variable in tf.trainable_variables():
+        # shape is an array of tf.Dimension
+        shape = variable.get_shape()
+        print(shape)
+        print(len(shape))
+        variable_parameters = 1
+        for dim in shape:
+            print(dim)
+            variable_parameters *= dim.value
+        print(variable_parameters)
+        total_parameters += variable_parameters
+    print("TOTAL PARAMS:", total_parameters)
 
-with open(__file__, "r") as fil:
-    # ending tag is broken, because we print ourselves!
-    value = "<pre>\n" + fil.read() + "\n<" + "/pre>"
-text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
-meta = tf.SummaryMetadata()
-meta.plugin_data.plugin_name = "text"
-summary = tf.Summary()
-summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
-train_writer.add_summary(summary)
+    np.set_printoptions(precision=2, suppress=True)
 
-with tf.Session() as sess:
-    train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
-    sess.run(tf.global_variables_initializer())
+    merged_summaries = tf.summary.merge_all()
 
-    @timed
-    def nn_train(cnfs, sat_labels, policy_labels):
-        inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs])
-        summary, _, loss, probs = sess.run(
-            [merged_summaries, train_op, model.loss,
-             model.policy_probabilities], feed_dict={
-                model.inputs: inputs,
-                model.policy_labels: policy_labels,
-                model.lengths: lengths,
-                model.sat_labels: sat_labels
-            })
-        train_writer.add_summary(summary, global_samples)
+    SUMMARY_DIR = "summaries"
+    MODEL_DIR = "models"
+    MODEL_NAME = "activepolicy"
+    DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
+    SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
+    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "_"
+    train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
 
-    @timed
-    def complete_step():
-        cnfs, sat_labels, policy_labels = gen_cnfs_with_labels()
-        nn_train(cnfs, sat_labels, policy_labels)
+    with open(__file__, "r") as fil:
+        # ending tag is broken, because we print ourselves!
+        value = "<pre>\n" + fil.read() + "\n<" + "/pre>"
+    text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
+    meta = tf.SummaryMetadata()
+    meta.plugin_data.plugin_name = "text"
+    summary = tf.Summary()
+    summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
+    train_writer.add_summary(summary)
 
-    global_samples = 0
-    start_time = time.time()
-    print_step = 1
-    print_step_multiply = 10
-    for global_batch in range(STEPS):
-        if global_batch % int(STEPS / 10) == 0 or global_batch == print_step:
-            if global_batch == print_step:
-                print_step *= print_step_multiply
-            now_time = time.time()
-            time_elapsed = now_time - start_time
-            if global_batch == 0:
-                time_remaining = "unknown"
-                time_total = "unknown"
-            else:
-                time_remaining = (time_elapsed / global_batch)\
-                                 * (STEPS - global_batch)
-                time_total = time_remaining + time_elapsed
-            print("Step {}, {}%\n"
-                  "\tsteps left: {}\n"
-                  "\ttime: {} s\n"
-                  "\test remaining: {} s\n"
-                  "\test total: {} s".format(
-                global_batch, round(100.*global_batch/STEPS, 1),
-                STEPS-global_batch, time_elapsed, time_remaining,
-                time_total))
+    with tf.Session() as sess:
+        train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
+        sess.run(tf.global_variables_initializer())
 
-        complete_step()
+        @timed
+        def nn_train(cnfs, sat_labels, policy_labels):
+            inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs])
+            summary, _, loss, probs = sess.run(
+                [merged_summaries, train_op, model.loss,
+                 model.policy_probabilities], feed_dict={
+                    model.inputs: inputs,
+                    model.policy_labels: policy_labels,
+                    model.lengths: lengths,
+                    model.sat_labels: sat_labels
+                })
+            train_writer.add_summary(summary, global_samples)
 
-        summary_values = [
-            summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                      simple_value=fun_time/BATCH_SIZE)
-            for fun_name, fun_time in LAST_TIMED.items()
-        ]
-        summary = summary_pb2.Summary(value=summary_values)
-        train_writer.add_summary(summary, global_samples)
+        @timed
+        def complete_step():
+            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels()
+            nn_train(cnfs, sat_labels, policy_labels)
 
-        global_samples += BATCH_SIZE
+        saver = tf.train.Saver()
+
+        global_samples = 0
+        start_time = time.time()
+        print_step = 1
+        print_step_multiply = 10
+        for global_batch in range(STEPS):
+            if global_batch % int(STEPS / 10) == 0 or global_batch == print_step:
+                if global_batch == print_step:
+                    print_step *= print_step_multiply
+                saver.save(sess, MODEL_PREFIX, global_step=global_samples)
+                now_time = time.time()
+                time_elapsed = now_time - start_time
+                if global_batch == 0:
+                    time_remaining = "unknown"
+                    time_total = "unknown"
+                else:
+                    time_remaining = (time_elapsed / global_batch)\
+                                     * (STEPS - global_batch)
+                    time_total = time_remaining + time_elapsed
+                print("Step {}, {}%\n"
+                      "\tsteps left: {}\n"
+                      "\ttime: {} s\n"
+                      "\test remaining: {} s\n"
+                      "\test total: {} s".format(
+                    global_batch, round(100.*global_batch/STEPS, 1),
+                    STEPS-global_batch, time_elapsed, time_remaining,
+                    time_total))
+
+            complete_step()
+
+            summary_values = [
+                summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
+                                          simple_value=fun_time/BATCH_SIZE)
+                for fun_name, fun_time in LAST_TIMED.items()
+            ]
+            summary = summary_pb2.Summary(value=summary_values)
+            train_writer.add_summary(summary, global_samples)
+
+            global_samples += BATCH_SIZE
+        saver.save(sess, MODEL_PREFIX, global_step=global_samples)
+
+
+if __name__ == "__main__":
+    main()
