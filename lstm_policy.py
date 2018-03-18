@@ -18,6 +18,15 @@ MIN_CLAUSE_NUM = 1
 # Neural net
 EMBEDDING_SIZE = 32
 LSTM_STATE_SIZE = 32
+LSTM_LAYERS = 1
+
+SAT_HIDDEN_LAYERS = 0
+SAT_HIDDEN_LAYER_SIZE = 32
+POLICY_HIDDEN_LAYERS = 0
+POLICY_HIDDEN_LAYER_SIZE = 32
+
+LEARNING_RATE = 0.01
+
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
 BATCH_SIZE = 64
@@ -88,27 +97,36 @@ class Graph:
                                        [BATCH_SIZE, -1, EMBEDDING_SIZE])
         # shape: [None, None, EMBEDDING_SIZE]
         
-        lstm = tf.contrib.rnn.BasicLSTMCell(LSTM_STATE_SIZE)
+        lstm = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.contrib.rnn.LSTMCell(LSTM_STATE_SIZE)
+             for i in range(LSTM_LAYERS)])
+        # TODO: wtf are those doing? Is it mistake that they're not used?
         hidden_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
         current_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
         state = hidden_state, current_state
         
-        _, lstm_final_state = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32, 
+        _, lstm_final_states = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32,
                                                sequence_length=self.lengths
                                                )
-        formula_embedding = lstm_final_state.h
+        formula_embedding = lstm_final_states[-1].h
             
         assert_shape(formula_embedding, [BATCH_SIZE, LSTM_STATE_SIZE])
-            
-        softmax_w = tf.Variable(tf.random_normal([LSTM_STATE_SIZE, VARIABLE_NUM*2]), name='softmax_w')
-        softmax_b = tf.Variable(tf.random_normal([VARIABLE_NUM*2]), name='softmax_b')
-        
-        sat_w = tf.Variable(tf.random_normal([LSTM_STATE_SIZE, 1]), name='sat_w')
-        sat_b = tf.Variable(tf.random_normal([1]), 'sat_b')
-        
-        self.policy_logits = formula_embedding @ softmax_w + softmax_b
-        
-        self.sat_logits = tf.squeeze(formula_embedding @ (sat_w), axis=1) + sat_b
+
+        last_policy_layer = formula_embedding
+        for num in range(POLICY_HIDDEN_LAYERS):
+            last_policy_layer = tf.layers.dense(
+                last_policy_layer, POLICY_HIDDEN_LAYER_SIZE, tf.nn.relu,
+                name='policy_hidden_{}'.format(num + 1))
+        self.policy_logits = tf.layers.dense(
+            last_policy_layer, VARIABLE_NUM*2, name='policy')
+
+        last_sat_layer = formula_embedding
+        for num in range(POLICY_HIDDEN_LAYERS):
+            last_sat_layer = tf.layers.dense(
+                last_sat_layer, SAT_HIDDEN_LAYER_SIZE, tf.nn.relu,
+                name='sat_hidden_{}'.format(num + 1))
+        self.sat_logits = tf.squeeze(
+            tf.layers.dense(last_sat_layer, 1, name='sat'), axis=1)
         
         # zero out policy for test when UNSAT
         # requires sat_labels to be provided, so needs to be a separate tensor in order 
@@ -191,10 +209,6 @@ def gen_labels(cnfs):
         else:
             policy_labels.append([0 for _ in range(VARIABLE_NUM * 2)])
 
-    assert all(len(label) == 2 * VARIABLE_NUM for label in policy_labels)
-    sat_steps = sum(sum(label) for label in policy_labels)
-    unsat_steps = len(cnfs) * 2 * VARIABLE_NUM - sat_steps
-    assert unsat_steps * 4 > sat_steps
     assert len(cnfs) == len(sat_labels) == len(policy_labels)
 
     return sat_labels, policy_labels
@@ -227,7 +241,7 @@ summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
 train_writer.add_summary(summary)
 
 with tf.Session() as sess:
-    train_op = tf.train.AdamOptimizer(learning_rate=0.01).minimize(model.loss)
+    train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
     sess.run(tf.global_variables_initializer())
 
     @timed
