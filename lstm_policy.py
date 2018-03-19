@@ -10,20 +10,20 @@ from tensorflow.core.framework import summary_pb2
 # HYPER PARAMETERES ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 5
-CLAUSE_SIZE = 3
-CLAUSE_NUM = 30
+VARIABLE_NUM = 4
+CLAUSE_SIZE = 2
+CLAUSE_NUM = 20
 MIN_CLAUSE_NUM = 1
 
 # Neural net
-EMBEDDING_SIZE = 32
-LSTM_STATE_SIZE = 32
+EMBEDDING_SIZE = 64
+LSTM_STATE_SIZE = 64
 LSTM_LAYERS = 1
 
 SAT_HIDDEN_LAYERS = 0
-SAT_HIDDEN_LAYER_SIZE = 32
+SAT_HIDDEN_LAYER_SIZE = 64
 POLICY_HIDDEN_LAYERS = 0
-POLICY_HIDDEN_LAYER_SIZE = 32
+POLICY_HIDDEN_LAYER_SIZE = 64
 
 LEARNING_RATE = 0.01
 
@@ -33,7 +33,7 @@ BATCH_SIZE = 64
 
 # Size of dataset
 
-SAMPLES = 10 ** 6
+SAMPLES = 10 ** 8
 STEPS = int(SAMPLES/BATCH_SIZE) + 1
 
 # ------------------------------------------
