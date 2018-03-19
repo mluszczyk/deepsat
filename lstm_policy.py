@@ -236,6 +236,8 @@ def main():
     train_writer.add_summary(summary)
 
     with tf.Session() as sess:
+        train_writer.add_graph(sess.graph)
+
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
 
