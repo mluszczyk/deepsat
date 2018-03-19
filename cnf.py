@@ -131,7 +131,7 @@ class DPLL(object):
         return None
 
     def suggest(self, cnf):
-        return cnf.vars[0]
+        return next(iter(cnf.vars))
 
 
 def main():

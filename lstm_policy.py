@@ -222,7 +222,7 @@ def main():
     MODEL_NAME = "activepolicy"
     DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
     SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
-    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "_"
+    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
     train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
 
     with open(__file__, "r") as fil:
