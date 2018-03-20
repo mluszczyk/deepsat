@@ -107,6 +107,7 @@ class CNF(object):
 class DPLL(object):
     def __init__(self):
         self.number_of_runs = 0
+        self.number_of_errors = 0
 
     def run(self, cnf: CNF):
         assert isinstance(cnf, CNF)
@@ -127,6 +128,7 @@ class DPLL(object):
         not_sug_cnf = cnf.set_var(-sug_var)
         not_sug_res = self.run(not_sug_cnf)
         if not_sug_res is not None:
+            self.number_of_errors += 1
             return [-sug_var] + not_sug_res
         return None
 
