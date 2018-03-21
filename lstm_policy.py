@@ -6,6 +6,8 @@ from cnf import get_random_kcnfs
 import datetime
 import time
 from tensorflow.core.framework import summary_pb2
+import sys
+import json
 
 # HYPER PARAMETERES ------------------------------------------
 
@@ -34,11 +36,20 @@ BATCH_SIZE = 64
 # Size of dataset
 
 SAMPLES = 10 ** 8
-STEPS = int(SAMPLES/BATCH_SIZE) + 1
 
 # ------------------------------------------
 
 LAST_TIMED = dict()
+
+
+def set_flags():
+    for arg in sys.argv[1:]:
+        var_name, value = arg.split('=')
+        value = json.loads(value)
+        old_value = globals()[var_name]
+        assert type(value) is type(old_value)
+        print("{} = {}  # default is {}".format(var_name, value, old_value))
+        globals()[var_name] = value
 
 
 def timed(func):
@@ -194,6 +205,8 @@ def gen_cnfs_with_labels():
 
 
 def main():
+    set_flags()
+
     tf.reset_default_graph()
     model = Graph()
 
@@ -227,7 +240,8 @@ def main():
 
     with open(__file__, "r") as fil:
         # ending tag is broken, because we print ourselves!
-        value = "<pre>\n" + fil.read() + "\n<" + "/pre>"
+        run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
+        value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
     text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
     meta = tf.SummaryMetadata()
     meta.plugin_data.plugin_name = "text"
@@ -265,8 +279,9 @@ def main():
         start_time = time.time()
         print_step = 1
         print_step_multiply = 10
-        for global_batch in range(STEPS):
-            if global_batch % int(STEPS / 10) == 0 or global_batch == print_step:
+        steps_number = int(SAMPLES/BATCH_SIZE) + 1
+        for global_batch in range(steps_number):
+            if global_batch % int(steps_number / 10) == 0 or global_batch == print_step:
                 if global_batch == print_step:
                     print_step *= print_step_multiply
                 saver.save(sess, MODEL_PREFIX, global_step=global_samples)
@@ -277,15 +292,15 @@ def main():
                     time_total = "unknown"
                 else:
                     time_remaining = (time_elapsed / global_batch)\
-                                     * (STEPS - global_batch)
+                                     * (steps_number - global_batch)
                     time_total = time_remaining + time_elapsed
                 print("Step {}, {}%\n"
                       "\tsteps left: {}\n"
                       "\ttime: {} s\n"
                       "\test remaining: {} s\n"
                       "\test total: {} s".format(
-                    global_batch, round(100.*global_batch/STEPS, 1),
-                    STEPS-global_batch, time_elapsed, time_remaining,
+                    global_batch, round(100.*global_batch/steps_number, 1),
+                    steps_number-global_batch, time_elapsed, time_remaining,
                     time_total))
 
             complete_step()
