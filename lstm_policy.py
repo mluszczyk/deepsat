@@ -9,6 +9,7 @@ from tensorflow.core.framework import summary_pb2
 import sys
 import json
 import multiprocessing
+import os
 
 # HYPER PARAMETERES ------------------------------------------
 
@@ -236,6 +237,10 @@ def main():
     SUMMARY_DIR = "summaries"
     MODEL_DIR = "models"
     MODEL_NAME = "activepolicy"
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(SUMMARY_DIR, exist_ok=True)
+
     DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
     SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
     MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
