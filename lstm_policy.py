@@ -8,6 +8,7 @@ import time
 from tensorflow.core.framework import summary_pb2
 import sys
 import json
+import multiprocessing
 
 # HYPER PARAMETERES ------------------------------------------
 
@@ -206,6 +207,8 @@ def gen_cnfs_with_labels():
 
 def main():
     set_flags()
+
+    print("cpu number:", multiprocessing.cpu_count())
 
     tf.reset_default_graph()
     model = Graph()
