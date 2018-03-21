@@ -113,10 +113,6 @@ class Graph:
         lstm = tf.nn.rnn_cell.MultiRNNCell(
             [tf.contrib.rnn.LSTMCell(LSTM_STATE_SIZE)
              for i in range(LSTM_LAYERS)])
-        # TODO: wtf are those doing? Is it mistake that they're not used?
-        hidden_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
-        current_state = tf.zeros([BATCH_SIZE, LSTM_STATE_SIZE])
-        state = hidden_state, current_state
         
         _, lstm_final_states = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32,
                                                sequence_length=self.lengths
