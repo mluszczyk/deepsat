@@ -27,6 +27,38 @@ def get_random_kcnfs(sample_number, clause_size, variable_number,
     return rcnfs
 
 
+def get_random_sat_kcnf(k, n, m):
+    """returns satisfiable k-CNF with max n variables and m clauses"""
+    solution = [choice([1, -1])*var for var in range(1, n+1)]
+    clauses = []
+    for i in range(m):
+        clause = []
+        while True:
+            clause_var_signs = [choice([1, -1]) for _ in range(k)]
+            if any(sign == 1 for sign in clause_var_signs):
+                # with probability p ( p <= 0.5 <= 2**k) reset clause
+                break
+        for j in range(k):
+            var = choice(solution)
+            svar = clause_var_signs[j] * var
+            clause.append(svar)
+        clauses.append(clause)
+    return CNF(clauses), solution
+
+
+def get_random_sat_kcnfs(sample_number, clause_size, variable_number,
+                         clause_number, min_clause_number=1):
+    rcnfs = []
+    solutions = []
+    for _ in range(sample_number):
+        rcnf, solution = get_random_sat_kcnf(
+            clause_size, variable_number,
+            random.randint(min_clause_number, clause_number))
+        rcnfs.append(rcnf)
+        solutions.append(solution)
+    return rcnfs, solutions
+
+
 class CNF(object):
     def __init__(self, clauses: List[List[int]]):
         clauses = tuple(tuple(c) for c in clauses)
