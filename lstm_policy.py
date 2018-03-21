@@ -169,6 +169,7 @@ class Graph:
         tf.summary.scalar("policy_top1_error", self.policy_top1_error)
         tf.summary.scalar("sat_loss", self.sat_loss)
         tf.summary.scalar("sat_error", self.sat_error)
+        tf.summary.scalar("sat_fraction", tf.reduce_sum(self.sat_labels) / BATCH_SIZE)
 
 
 @timed
