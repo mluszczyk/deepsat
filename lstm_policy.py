@@ -1,4 +1,5 @@
 # coding: utf-8
+import functools
 from functools import wraps
 import tensorflow as tf
 import numpy as np
@@ -38,6 +39,9 @@ BATCH_SIZE = 64
 # Size of dataset
 
 SAMPLES = 10 ** 8
+
+# Multiprocessing
+PROCESSOR_NUM = None  # defaults to all processors
 
 # ------------------------------------------
 
@@ -172,34 +176,38 @@ class Graph:
         tf.summary.scalar("sat_fraction", tf.reduce_sum(self.sat_labels) / BATCH_SIZE)
 
 
+def set_and_sat(triple):
+    cnf, is_satisfiable, literal = triple
+    if not is_satisfiable or not abs(literal) in cnf.vars:
+        return False
+    cnf = cnf.set_var(literal)
+    return cnf.satisfiable()
+
+
+def satisfiable(cnf):
+    return cnf.satisfiable()
+
+
 @timed
-def gen_labels(cnfs):
-    sat_labels = [cnf.satisfiable() for cnf in cnfs]
+def gen_labels(pool, cnfs):
+    sat_labels = pool.map(satisfiable, cnfs)
 
-    policy_labels = []
-    for cnf, is_satisfiable in zip(cnfs, sat_labels):
-        if is_satisfiable:
-            correct_steps = cnf.get_correct_steps()
-            label = []
-            # for every variable, for true, then for false
-            for v in range(1, VARIABLE_NUM+1):
-                for sv in [v, -v]:
-                    result = 1.0 if sv in correct_steps else 0.0
-                    label.append(result)
-            policy_labels.append(label)
-        else:
-            policy_labels.append([0 for _ in range(VARIABLE_NUM * 2)])
-
-    assert len(cnfs) == len(sat_labels) == len(policy_labels)
+    sats_to_check = [(cnf, is_satisfiable, literal)
+                     for (cnf, is_satisfiable) in zip(cnfs, sat_labels)
+                     for v in range(1, VARIABLE_NUM + 1)
+                     for literal in [v, -v]]
+    policy_labels = pool.map(set_and_sat, sats_to_check)
+    policy_labels = np.asarray(policy_labels).reshape(len(cnfs), VARIABLE_NUM * 2)
+    assert len(cnfs) == len(sat_labels) == policy_labels.shape[0]
 
     return sat_labels, policy_labels
 
 
 @timed
-def gen_cnfs_with_labels():
+def gen_cnfs_with_labels(pool):
     cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
                             min_clause_number=MIN_CLAUSE_NUM)
-    sat_labels, policy_labels = gen_labels(cnfs)
+    sat_labels, policy_labels = gen_labels(pool, cnfs)
     return cnfs, sat_labels, policy_labels
 
 
@@ -254,7 +262,7 @@ def main():
     summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
     train_writer.add_summary(summary)
 
-    with tf.Session() as sess:
+    with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
         train_writer.add_graph(sess.graph)
 
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
@@ -275,7 +283,7 @@ def main():
 
         @timed
         def complete_step():
-            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels()
+            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
             nn_train(cnfs, sat_labels, policy_labels)
 
         saver = tf.train.Saver()
