@@ -28,21 +28,22 @@ SERIES_DIR = os.path.join(PROJ_DIR, "series", SERIES_NAME)
 
 
 def main():
-    for VARIABLE_NUM in [4, 5, 6, 7, 8]:
-        for CLAUSE_NUM in [VARIABLE_NUM * 4, VARIABLE_NUM * 5]:
-            for EMBEDDING_SIZE in [64, 96, 128, 128 + 64]:
-                for LEARNING_RATE in [0.001, 0.01]:
-                    exp_name = "var{}-clause{}-emb{}-lr{}".format(VARIABLE_NUM, CLAUSE_NUM, EMBEDDING_SIZE, LEARNING_RATE)
-                    path = os.path.join(SERIES_DIR, exp_name)
-                    os.makedirs(path)
-                    SAMPLES = 100000000
-                    opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES"]
-                    locals_ = locals()
-                    opts_string = ' '.join(["{}={}".format(name, locals_[name]) for name in opts])
-                    sbatch_path = os.path.join(path, "sat-" + exp_name)
-                    with open(sbatch_path, "w") as f:
-                        f.write(SBATCH_TEMPLATE.format(options=opts_string))
-                    subprocess.run(["sbatch", sbatch_path], check=True, cwd=path)
+    for VARIABLE_NUM in [4, 5, 6, 7, 8, 9]:
+        CLAUSE_NUM = VARIABLE_NUM * 5
+        EMBEDDING_SIZE = 128 + 64
+        LEARNING_RATE = 0.001
+
+        exp_name = "var{}".format(VARIABLE_NUM)
+        path = os.path.join(SERIES_DIR, exp_name)
+        os.makedirs(path)
+        SAMPLES = VARIABLE_NUM * 10 ** 6
+        opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES"]
+        locals_ = locals()
+        opts_string = ' '.join(["{}={}".format(name, locals_[name]) for name in opts])
+        sbatch_path = os.path.join(path, "sat-" + exp_name)
+        with open(sbatch_path, "w") as f:
+            f.write(SBATCH_TEMPLATE.format(options=opts_string))
+        subprocess.run(["sbatch", sbatch_path], check=True, cwd=path)
 
 
 if __name__ == '__main__':
