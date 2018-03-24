@@ -28,16 +28,17 @@ SERIES_DIR = os.path.join(PROJ_DIR, "series", SERIES_NAME)
 
 
 def main():
+    CLAUSE_SIZE = 3
+    EMBEDDING_SIZE = 128 + 64
+    LEARNING_RATE = 0.001
     for VARIABLE_NUM in [4, 5, 6, 7, 8, 9]:
         CLAUSE_NUM = VARIABLE_NUM * 5
-        EMBEDDING_SIZE = 128 + 64
-        LEARNING_RATE = 0.001
 
         exp_name = "var{}".format(VARIABLE_NUM)
         path = os.path.join(SERIES_DIR, exp_name)
         os.makedirs(path)
-        SAMPLES = VARIABLE_NUM * 10 ** 6
-        opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES"]
+        SAMPLES = 2 * VARIABLE_NUM * 10 ** 6
+        opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES", "CLAUSE_SIZE"]
         locals_ = locals()
         opts_string = ' '.join(["{}={}".format(name, locals_[name]) for name in opts])
         sbatch_path = os.path.join(path, "sat-" + exp_name)
