@@ -48,25 +48,10 @@ def main():
     EMBEDDING_SIZE = 256
     LSTM_STATE_SIZE = 128
 
-    opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES", "CLAUSE_SIZE",
-            "SAT_HIDDEN_LAYERS", "POLICY_HIDDEN_LAYERS",
-            "SAT_HIDDEN_LAYER_SIZE", "POLICY_HIDDEN_LAYER_SIZE"
-    ]
+    opts = ["VARIABLE_NUM", "CLAUSE_NUM", "EMBEDDING_SIZE", "LEARNING_RATE", "SAMPLES", "CLAUSE_SIZE", "BATCH_SIZE"] 
 
-    # baseline
-    SAT_HIDDEN_LAYERS = 0
-    POLICY_HIDDEN_LAYERS = 0
-    POLICY_HIDDEN_LAYER_SIZE = SAT_HIDDEN_LAYER_SIZE = 0  # ignored anyway
-    locals_ = locals()
-    opts = {key: locals_[key] for key in opts}
-    run_process("baseline", opts)
-
-    SAT_HIDDEN_LAYERS = 1
-    POLICY_HIDDEN_LAYERS = 1
-    for POLICY_HIDDEN_LAYER_SIZE in [2 * VARIABLE_NUM, 4 * VARIABLE_NUM, 8 * VARIABLE_NUM,
-                                     EMBEDDING_SIZE // 2, EMBEDDING_SIZE]:
-        exp_name = "hid{}".format(POLICY_HIDDEN_LAYER_SIZE)
-        SAT_HIDDEN_LAYER_SIZE = POLICY_HIDDEN_LAYER_SIZE
+    for BATCH_SIZE in [64, 128, 256, 512]:
+        exp_name = "batch{}".format(BATCH_SIZE)
         locals_ = locals()
         opts = {key: locals_[key] for key in opts}
         run_process(exp_name, opts)
