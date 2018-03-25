@@ -119,7 +119,7 @@ class Graph:
              for i in range(LSTM_LAYERS)])
         
         _, lstm_final_states = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32,
-                                               sequence_length=self.lengths
+                                                 sequence_length=self.lengths
                                                )
         formula_embedding = lstm_final_states[-1].h
             
