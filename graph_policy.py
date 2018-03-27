@@ -75,14 +75,23 @@ def assert_shape(matrix, shape: list):
 
 class Graph:
     def __init__(self):
-        self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM, None), name='inputs')
-        self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM, 2), name='policy_labels')
+        self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
+        self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
         self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
 
-        positive_connections = tf.maximum(self.inputs, [0.0])
-        negative_connections = tf.minimum(self.inputs, [0.0]) * -1.0
-        assert_shape(positive_connections, [BATCH_SIZE, VARIABLE_NUM, None])
-        assert_shape(negative_connections, [BATCH_SIZE, VARIABLE_NUM, None])
+        variable_num = tf.shape(self.inputs)[1]
+        clause_num = tf.shape(self.inputs)[2]
+        assert_shape(variable_num, [])
+        assert_shape(clause_num, [])
+
+        variables_per_clause = tf.reduce_sum(self.inputs, axis=[1, 3])
+        clauses_per_variable = tf.reduce_sum(self.inputs, axis=[2, 3])
+        assert_shape(variables_per_clause, [BATCH_SIZE, None])
+        assert_shape(clauses_per_variable, [BATCH_SIZE, None])
+
+        positive_connections, negative_connections = (tf.squeeze(conn, axis=3) for conn in tf.split(self.inputs, 2, axis=3))
+        assert_shape(positive_connections, [BATCH_SIZE, None, None])
+        assert_shape(negative_connections, [BATCH_SIZE, None, None])
 
         reuse = tf.AUTO_REUSE
 
@@ -95,20 +104,29 @@ class Graph:
                     name='init_var_embedding')
                 var_embeddings = tf.tile(
                     tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [BATCH_SIZE, VARIABLE_NUM, 1])
+                    [BATCH_SIZE, variable_num, 1])
+
+                initial_clause_embedding = tf.Variable(
+                    tf.random_uniform([EMBEDDING_SIZE], -1., 1),
+                    name='init_clause_embedding')
+                clause_embeddings = tf.tile(
+                    tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
+                    [BATCH_SIZE, clause_num, 1])
+
             elif level >= 1:
                 positive_var_embeddings = tf.layers.dense(
                     var_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='positive_var', reuse=reuse)
                 negative_var_embeddings = tf.layers.dense(
                     var_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='negative_var', reuse=reuse)
-                assert_shape(positive_var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
-                assert_shape(negative_var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
+                assert_shape(positive_var_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
+                assert_shape(negative_var_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
-                # TODO: warning, batch_norm is not reused, as it's not as simple as marking reuse=True
-                clause_preembeddings = tf.contrib.layers.batch_norm((
+                clause_preembeddings = tf.divide((
                     tf.matmul(positive_connections, positive_var_embeddings, transpose_a=True) +
                     tf.matmul(negative_connections, negative_var_embeddings, transpose_a=True)
-                ))
+                ), tf.expand_dims(variables_per_clause, -1) + 1.0) + clause_embeddings
+                assert_shape(clause_preembeddings,
+                             [BATCH_SIZE, None, EMBEDDING_SIZE])
                 last_hidden = clause_preembeddings
                 for i in HIDDEN_LAYERS:
                     last_hidden = tf.layers.dense(
@@ -128,11 +146,11 @@ class Graph:
                 assert_shape(positive_clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
-                # TODO: warning, batch_norm is not reused, as it's not as simple as marking reuse=True
-                var_preembeddings = tf.contrib.layers.batch_norm((
+                var_preembeddings = tf.divide((
                         tf.matmul(positive_connections, positive_clause_embeddings) +
                         tf.matmul(negative_connections, negative_clause_embeddings)
-                ))
+                ), tf.expand_dims(clauses_per_variable, -1) + 1.0) + var_embeddings
+                assert_shape(var_preembeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 last_hidden = var_preembeddings
                 for i in HIDDEN_LAYERS:
                     last_hidden = tf.layers.dense(
@@ -142,11 +160,11 @@ class Graph:
                         reuse=reuse)
                 var_embeddings = tf.layers.dense(
                     last_hidden, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='var_embeddings', reuse=reuse)
-            assert_shape(var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
+            assert_shape(var_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
             self.policy_logits = tf.layers.dense(
                 var_embeddings, 2, name='policy', reuse=reuse)
-            assert_shape(self.policy_logits, [BATCH_SIZE, VARIABLE_NUM, 2])
+            assert_shape(self.policy_logits, [BATCH_SIZE, None, 2])
 
             self.sat_logits = tf.reduce_sum(
                 tf.layers.dense(var_embeddings, 1, name='sat', reuse=reuse),
@@ -175,7 +193,7 @@ class Graph:
 
             self.policy_error = tf.reduce_sum(tf.abs(
                 tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
-                  tf.reduce_sum(self.sat_labels)) / (VARIABLE_NUM * 2)
+                  tf.reduce_sum(self.sat_labels)) / (tf.cast(variable_num, dtype=tf.float32) * 2.0)
             self.sat_error = tf.reduce_mean(tf.abs(
                 tf.round(self.sat_probabilities) - self.sat_labels))
         
@@ -215,12 +233,10 @@ def satisfiable(cnf):
 
 def clauses_to_matrix(clauses):
     def var_in_clause_val(var, i):
-        if len(clauses) > i:
-            if var in clauses[i]:
-                return 1.0
-            if -var in clauses[i]:
-                return -1.0
-        return 0.0
+        if i >= len(clauses):
+            return [0.0, 0.0]
+        return [1.0 if var in clauses[i] else 0.0,
+                1.0 if -var in clauses[i] else 0.0]
     result = [[var_in_clause_val(var, i) for i in range(CLAUSE_NUM)]
               for var in range(1, VARIABLE_NUM+1)]
     return result
