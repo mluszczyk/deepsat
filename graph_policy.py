@@ -15,23 +15,21 @@ import os
 # HYPER PARAMETERES ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 4
+VARIABLE_NUM = 8
 CLAUSE_SIZE = 3
-CLAUSE_NUM = 20
+CLAUSE_NUM = 40
 MIN_CLAUSE_NUM = 1
 
 # Neural net
-EMBEDDING_SIZE = 64
-LSTM_STATE_SIZE = 64
-LSTM_LAYERS = 1
-LEVEL_NUMBER = 2
+EMBEDDING_SIZE = 128
+LEVEL_NUMBER = 10
 
-SAT_HIDDEN_LAYERS = 0
-SAT_HIDDEN_LAYER_SIZE = 64
-POLICY_HIDDEN_LAYERS = 0
-POLICY_HIDDEN_LAYER_SIZE = 64
+POS_NEG_ACTIVATION = None
+HIDDEN_LAYERS = [128, 128]
+HIDDEN_ACTIVATION = tf.nn.relu
+EMBED_ACTIVATION = None
 
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.001
 
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
@@ -100,35 +98,50 @@ class Graph:
                     [BATCH_SIZE, VARIABLE_NUM, 1])
             elif level >= 1:
                 positive_var_embeddings = tf.layers.dense(
-                    var_embeddings, EMBEDDING_SIZE, name='positive_var', reuse=reuse)
+                    var_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='positive_var', reuse=reuse)
                 negative_var_embeddings = tf.layers.dense(
-                    var_embeddings, EMBEDDING_SIZE, name='negative_var', reuse=reuse)
+                    var_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='negative_var', reuse=reuse)
                 assert_shape(positive_var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
                 assert_shape(negative_var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
 
-                clause_preembeddings = (
+                # TODO: warning, batch_norm is not reused, as it's not as simple as marking reuse=True
+                clause_preembeddings = tf.contrib.layers.batch_norm((
                     tf.matmul(positive_connections, positive_var_embeddings, transpose_a=True) +
                     tf.matmul(negative_connections, negative_var_embeddings, transpose_a=True)
-                )
+                ))
+                last_hidden = clause_preembeddings
+                for i in HIDDEN_LAYERS:
+                    last_hidden = tf.layers.dense(
+                        last_hidden, EMBEDDING_SIZE,
+                        activation=HIDDEN_ACTIVATION, name='hidden_clause_{}'.format(i),
+                        reuse=reuse)
                 clause_embeddings = tf.layers.dense(
-                    clause_preembeddings, EMBEDDING_SIZE, name='clause_embeddings', reuse=reuse)
+                    last_hidden, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='clause_embeddings', reuse=reuse)
                 assert_shape(clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
                 # clause -> var
 
                 positive_clause_embeddings = tf.layers.dense(
-                    clause_embeddings, EMBEDDING_SIZE, name='positive_clause', reuse=reuse)
+                    clause_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='positive_clause', reuse=reuse)
                 negative_clause_embeddings = tf.layers.dense(
-                    clause_embeddings, EMBEDDING_SIZE, name='negative_clause', reuse=reuse)
+                    clause_embeddings, EMBEDDING_SIZE, activation=POS_NEG_ACTIVATION, name='negative_clause', reuse=reuse)
                 assert_shape(positive_clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
-                var_preembeddings = (
+                # TODO: warning, batch_norm is not reused, as it's not as simple as marking reuse=True
+                var_preembeddings = tf.contrib.layers.batch_norm((
                         tf.matmul(positive_connections, positive_clause_embeddings) +
                         tf.matmul(negative_connections, negative_clause_embeddings)
-                )
+                ))
+                last_hidden = var_preembeddings
+                for i in HIDDEN_LAYERS:
+                    last_hidden = tf.layers.dense(
+                        last_hidden, EMBEDDING_SIZE,
+                        activation=HIDDEN_ACTIVATION,
+                        name='hidden_var_{}'.format(i),
+                        reuse=reuse)
                 var_embeddings = tf.layers.dense(
-                    var_preembeddings, EMBEDDING_SIZE, name='var_embeddings', reuse=reuse)
+                    last_hidden, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='var_embeddings', reuse=reuse)
             assert_shape(var_embeddings, [BATCH_SIZE, VARIABLE_NUM, EMBEDDING_SIZE])
 
             self.policy_logits = tf.layers.dense(
