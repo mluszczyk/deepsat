@@ -2,6 +2,7 @@ import random
 from typing import List, Tuple, Set
 from random import randint, choice
 
+import numpy
 import pycosat
 
 
@@ -20,10 +21,15 @@ def get_random_kcnf(k, n, m):
 
 
 def get_random_kcnfs(sample_number, clause_size, variable_number,
-                     clause_number, min_clause_number=1):
-    rcnfs = [get_random_kcnf(clause_size, variable_number,
+                     clause_number, min_clause_number=1, min_variable_number=None):
+    if min_variable_number is None:
+        min_variable_number = variable_number
+    rcnfs = [get_random_kcnf(clause_size,
+                             random.randint(min_variable_number, variable_number),
                              random.randint(min_clause_number, clause_number))
              for _ in range(sample_number)]
+    if min_variable_number != variable_number:
+        rcnfs = [cnf.permute(variable_number) for cnf in rcnfs]
     return rcnfs
 
 
@@ -134,6 +140,14 @@ class CNF(object):
 
     def __eq__(self, other):
         return self.clauses == other.clauses
+
+    def permute(self, variable_num):
+        permutation = list(range(1, variable_num + 1))
+        random.shuffle(permutation)
+        permutation.insert(0, 0)
+        return CNF([[int(numpy.sign(var) * permutation[abs(var)])
+                     for var in clause]
+                    for clause in self.clauses])
 
 
 class DPLL(object):
