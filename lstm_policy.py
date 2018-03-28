@@ -16,6 +16,7 @@ import os
 
 # Data properties
 VARIABLE_NUM = 4
+MIN_VARIABLE_NUM = VARIABLE_NUM
 CLAUSE_SIZE = 2
 CLAUSE_NUM = 20
 MIN_CLAUSE_NUM = 1
@@ -88,7 +89,7 @@ class Graph:
         self.lengths = tf.placeholder(tf.int32, shape=(BATCH_SIZE,), name='lengths')
         self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM * 2), name='policy_labels')
         self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
-        
+
         vars_ = tf.abs(self.inputs)
         signs = tf.cast(tf.sign(self.inputs), tf.float32)  # shape: [batch_size, None, CLAUSE_SIZE]
 
@@ -206,7 +207,8 @@ def gen_labels(pool, cnfs):
 @timed
 def gen_cnfs_with_labels(pool):
     cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
-                            min_clause_number=MIN_CLAUSE_NUM)
+                            min_clause_number=MIN_CLAUSE_NUM,
+                            min_variable_number=MIN_VARIABLE_NUM)
     sat_labels, policy_labels = gen_labels(pool, cnfs)
     return cnfs, sat_labels, policy_labels
 

@@ -43,14 +43,15 @@ def main():
     CLAUSE_SIZE = 3
     LEARNING_RATE = 0.001
     VARIABLE_NUM = 8
-    CLAUSE_NUM = VARIABLE_NUM * 5
-    SAMPLES = 4 * VARIABLE_NUM * 10 ** 6
     EMBEDDING_SIZE = 256
     LSTM_STATE_SIZE = 128
     BATCH_SIZE = 128
     POLICY_HIDDEN_LAYERS = 1
-    POLICY_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
     SAT_HIDDEN_LAYERS = 1
+    VARIABLE_NUM = 10
+    CLAUSE_NUM = VARIABLE_NUM * 5
+    SAMPLES = 4 * VARIABLE_NUM * 10 ** 6
+    POLICY_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
     SAT_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
 
     opts = [
@@ -58,14 +59,15 @@ def main():
         "LEARNING_RATE", "SAMPLES", "CLAUSE_SIZE", "BATCH_SIZE",
         "POLICY_HIDDEN_LAYERS", "POLICY_HIDDEN_LAYER_SIZE",
         "SAT_HIDDEN_LAYERS", "SAT_HIDDEN_LAYER_SIZE",
-        "LSTM_LAYERS", "LSTM_STATE_SIZE"
+        "LSTM_LAYERS", "LSTM_STATE_SIZE", "MIN_VARIABLE_NUM"
     ] 
 
-    for LSTM_LAYERS, LSTM_STATE_SIZE in [(1, 128), (2, 64), (2, 96), (2, 128), (3, 64), (3, 96), (3, 128)]:
-        exp_name = "num{}-size{}".format(LSTM_LAYERS, LSTM_STATE_SIZE)
-        locals_ = locals()
-        opts = {key: locals_[key] for key in opts}
-        run_process(exp_name, opts)
+    for MIN_VARIABLE_NUM in [1, VARIABLE_NUM]:
+        for LSTM_LAYERS in [1, 2]:
+            exp_name = "lstm{}-num{}".format(LSTM_LAYERS, MIN_VARIABLE_NUM)
+            locals_ = locals()
+            opts = {key: locals_[key] for key in opts}
+            run_process(exp_name, opts)
 
 
 if __name__ == '__main__':
