@@ -231,14 +231,18 @@ def satisfiable(cnf):
     return cnf.satisfiable()
 
 
-def clauses_to_matrix(clauses):
+def clauses_to_matrix(clauses, max_clause_num=None, max_variable_num=None):
+    if max_clause_num is None:
+        max_clause_num = CLAUSE_NUM
+    if max_variable_num is None:
+        max_variable_num = VARIABLE_NUM
     def var_in_clause_val(var, i):
         if i >= len(clauses):
             return [0.0, 0.0]
         return [1.0 if var in clauses[i] else 0.0,
                 1.0 if -var in clauses[i] else 0.0]
-    result = [[var_in_clause_val(var, i) for i in range(CLAUSE_NUM)]
-              for var in range(1, VARIABLE_NUM+1)]
+    result = [[var_in_clause_val(var, i) for i in range(max_clause_num)]
+              for var in range(1, max_variable_num+1)]
     return result
 
 
