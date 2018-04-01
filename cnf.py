@@ -84,8 +84,10 @@ class CNF(object):
 
     def __str__(self):
         def num_to_letter(num):
-            assert 1 <= num <= 25
-            return chr(num-1+ord('a'))
+            if num <= 24:
+                return chr(num-1+ord('a'))
+            else:
+                return 'z' + str(num - 24)
         tokens = []
         for clause in self.clauses:
             tokens.append('(')

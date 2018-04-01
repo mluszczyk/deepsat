@@ -75,10 +75,12 @@ def assert_shape(matrix, shape: list):
 
 class Graph:
     def __init__(self):
+        BATCH_SIZE = None
         self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
         self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
         self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
 
+        batch_size = tf.shape(self.inputs)[0]
         variable_num = tf.shape(self.inputs)[1]
         clause_num = tf.shape(self.inputs)[2]
         assert_shape(variable_num, [])
@@ -104,14 +106,14 @@ class Graph:
                     name='init_var_embedding')
                 var_embeddings = tf.tile(
                     tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [BATCH_SIZE, variable_num, 1])
+                    [batch_size, variable_num, 1])
 
                 initial_clause_embedding = tf.Variable(
                     tf.random_uniform([EMBEDDING_SIZE], -1., 1),
                     name='init_clause_embedding')
                 clause_embeddings = tf.tile(
                     tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [BATCH_SIZE, clause_num, 1])
+                    [batch_size, clause_num, 1])
 
             elif level >= 1:
                 positive_var_embeddings = tf.layers.dense(
@@ -174,7 +176,7 @@ class Graph:
             # zero out policy for test when UNSAT
             # requires sat_labels to be provided, so needs to be a separate tensor in order
             # for inference to work
-            self.policy_logits_for_cmp = tf.reshape(self.sat_labels, [BATCH_SIZE, 1, 1]) * self.policy_logits
+            self.policy_logits_for_cmp = tf.reshape(self.sat_labels, [batch_size, 1, 1]) * self.policy_logits
 
             self.policy_loss = tf.losses.sigmoid_cross_entropy(
                 self.policy_labels, self.policy_logits_for_cmp)
@@ -207,7 +209,7 @@ class Graph:
             #tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
             tf.summary.scalar("sat_loss"+lvln, self.sat_loss)
             tf.summary.scalar("sat_error"+lvln, self.sat_error)
-            tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / BATCH_SIZE)
+            tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
         tf.summary.scalar("loss", self.loss)
         tf.summary.scalar("policy_loss", self.policy_loss)
@@ -216,7 +218,7 @@ class Graph:
         tf.summary.scalar("sat_loss", self.sat_loss)
         tf.summary.scalar("sat_error", self.sat_error)
         tf.summary.scalar("sat_fraction",
-                          tf.reduce_sum(self.sat_labels) / BATCH_SIZE)
+                          tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
 def set_and_sat(triple):
@@ -350,10 +352,10 @@ def main():
         global_samples = 0
         start_time = time.time()
         print_step = 1
-        print_step_multiply = 10
+        print_step_multiply = 2
         steps_number = int(SAMPLES/BATCH_SIZE) + 1
         for global_batch in range(steps_number):
-            if global_batch % int(steps_number / 10) == 0 or global_batch == print_step:
+            if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
                 if global_batch == print_step:
                     print_step *= print_step_multiply
                 saver.save(sess, MODEL_PREFIX, global_step=global_samples)
