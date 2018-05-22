@@ -5,3 +5,4 @@ sklearn
 scipy  # implicitly reqiuired by sklearn
 matplotlib
 pycosat
+neptune-cli==1.6.3

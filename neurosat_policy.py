@@ -11,6 +11,7 @@ import sys
 import json
 import multiprocessing
 import os
+from deepsense import neptune
 
 # HYPER PARAMETERES ------------------------------------------
 
@@ -49,7 +50,10 @@ LAST_TIMED = dict()
 
 def set_flags():
     for arg in sys.argv[1:]:
-        var_name, value = arg.split('=')
+        try:
+            var_name, value = arg.split('=')
+        except ValueError:
+            continue
         value = json.loads(value)
         old_value = globals()[var_name]
         assert type(value) is type(old_value)
@@ -290,6 +294,9 @@ def gen_cnfs_with_labels(pool):
 
 
 def main():
+    context = neptune.Context()
+    context.integrate_with_tensorflow()
+
     set_flags()
 
     print("cpu number:", multiprocessing.cpu_count())
@@ -341,7 +348,7 @@ def main():
     train_writer.add_summary(summary)
 
     with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
-        train_writer.add_graph(sess.graph)
+        # train_writer.add_graph(sess.graph)
 
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
