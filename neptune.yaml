@@ -2,5 +2,4 @@ name: Neuro SAT
 project: Deep SAT
 # host: kdmi.neptune.deepsense.io
 # port: 443
-# username: michal.luszczyk@gmail.com
 executable: neurosat_policy.py

@@ -1,5 +1,6 @@
 jupyterlab
 tensorflow
+tensorflow-gpu
 sympy
 sklearn
 scipy  # implicitly reqiuired by sklearn
