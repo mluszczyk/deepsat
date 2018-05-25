@@ -3,6 +3,7 @@ from typing import List, Tuple, Set
 from random import randint, choice
 
 import numpy
+import numpy.random
 import pycosat
 
 
@@ -18,6 +19,33 @@ def get_random_kcnf(k, n, m):
             clause.append(svar)
         clauses.append(clause)
     return CNF(clauses)
+
+
+def get_sats_SR(sample_number, min_variable_number, max_variable_number=None):
+    if max_variable_number is None:
+        max_variable_number = min_variable_number
+    rcnfs = [get_sat_SR(min_variable_number, max_variable_number) for _ in range(sample_number)]
+    return rcnfs
+
+
+def get_sat_SR(min_variable_number, max_variable_number):
+    variable_number = random.randint(min_variable_number, max_variable_number)
+    clauses = []
+    while pycosat.solve(clauses) != 'UNSAT':
+        clauses.append(get_SR(variable_number))
+    if random.random() > 0.5:
+        clauses = clauses[:-1]
+    return CNF(clauses)
+
+
+def get_SR(variable_number):
+    # As authors stated, 2 + Bernoulli(0.3) + Geo(0.4). This has actually E[k] = 4.8
+    k = 2 + numpy.random.binomial(1, 0.3) + numpy.random.geometric(0.4)
+    if k > variable_number:
+        k = variable_number
+    vars = random.sample(list(range(1, variable_number + 1)), k)
+    svars = [var if random.random() > 0.5 else -var for var in vars]
+    return svars
 
 
 def get_random_kcnfs(sample_number, clause_size, variable_number,

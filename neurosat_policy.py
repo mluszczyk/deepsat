@@ -3,7 +3,7 @@ import functools
 from functools import wraps
 import tensorflow as tf
 import numpy as np
-from cnf import get_random_kcnfs
+from cnf import get_random_kcnfs, get_sats_SR
 import datetime
 import time
 from tensorflow.core.framework import summary_pb2
@@ -17,9 +17,12 @@ from deepsense import neptune
 
 # Data properties
 VARIABLE_NUM = 8
+MIN_VARIABLE_NUM = 8
 CLAUSE_SIZE = 3
 CLAUSE_NUM = 40
 MIN_CLAUSE_NUM = 1
+
+SR_GENERATOR = True
 
 # Neural net
 EMBEDDING_SIZE = 128
@@ -28,7 +31,7 @@ LEVEL_NUMBER = 10
 POS_NEG_ACTIVATION = None
 HIDDEN_LAYERS = [128, 128]
 HIDDEN_ACTIVATION = tf.nn.relu
-EMBED_ACTIVATION = None
+EMBED_ACTIVATION = tf.nn.tanh
 
 LEARNING_RATE = 0.001
 
@@ -287,8 +290,11 @@ def gen_labels(pool, cnfs):
 
 @timed
 def gen_cnfs_with_labels(pool):
-    cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
-                            min_clause_number=MIN_CLAUSE_NUM)
+    if SR_GENERATOR:
+        cnfs = get_sats_SR(BATCH_SIZE, MIN_VARIABLE_NUM, VARIABLE_NUM)
+    else:
+        cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
+                                min_clause_number=MIN_CLAUSE_NUM)
     sat_labels, policy_labels = gen_labels(pool, cnfs)
     return cnfs, sat_labels, policy_labels
 
