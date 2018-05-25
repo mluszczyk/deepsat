@@ -13,7 +13,7 @@ import multiprocessing
 import os
 from deepsense import neptune
 
-# HYPER PARAMETERES ------------------------------------------
+# HYPERPARAMETERS ------------------------------------------
 
 # Data properties
 VARIABLE_NUM = 8
@@ -39,6 +39,9 @@ POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
 BATCH_SIZE = 64
 
+NEPTUNE_ENABLED = False
+BOARD_WRITE_GRAPH = True
+
 # Size of dataset
 
 SAMPLES = 10 ** 8
@@ -53,15 +56,16 @@ LAST_TIMED = dict()
 
 def set_flags():
     for arg in sys.argv[1:]:
-        try:
-            var_name, value = arg.split('=')
-        except ValueError:
+        key = '--params='
+        if not arg.startswith(key):
             continue
-        value = json.loads(value)
-        old_value = globals()[var_name]
-        assert type(value) is type(old_value)
-        print("{} = {}  # default is {}".format(var_name, value, old_value))
-        globals()[var_name] = value
+        str_settings = arg[len(key):]
+        settings = json.loads(str_settings)
+        for var_name, value in settings.items():
+            old_value = globals()[var_name]
+            assert type(value) is type(old_value)
+            print("{} = {}  # default is {}".format(var_name, value, old_value))
+            globals()[var_name] = value
 
 
 def timed(func):
@@ -300,10 +304,11 @@ def gen_cnfs_with_labels(pool):
 
 
 def main():
-    context = neptune.Context()
-    context.integrate_with_tensorflow()
-
     set_flags()
+
+    if NEPTUNE_ENABLED:
+        context = neptune.Context()
+        context.integrate_with_tensorflow()
 
     print("cpu number:", multiprocessing.cpu_count())
 
@@ -354,7 +359,8 @@ def main():
     train_writer.add_summary(summary)
 
     with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
-        # train_writer.add_graph(sess.graph)
+        if BOARD_WRITE_GRAPH:
+            train_writer.add_graph(sess.graph)
 
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
