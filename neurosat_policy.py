@@ -54,18 +54,25 @@ PROCESSOR_NUM = None  # defaults to all processors
 LAST_TIMED = dict()
 
 
+def read_settings(str_settings):
+    settings = json.loads(str_settings)
+    for var_name, value in settings.items():
+        old_value = globals()[var_name]
+        assert type(value) is type(old_value)
+        print("{} = {}  # default is {}".format(var_name, value, old_value))
+        globals()[var_name] = value
+
+
 def set_flags():
     for arg in sys.argv[1:]:
         key = '--params='
         if not arg.startswith(key):
             continue
         str_settings = arg[len(key):]
-        settings = json.loads(str_settings)
-        for var_name, value in settings.items():
-            old_value = globals()[var_name]
-            assert type(value) is type(old_value)
-            print("{} = {}  # default is {}".format(var_name, value, old_value))
-            globals()[var_name] = value
+        read_settings(str_settings)
+
+    environ_settings = os.environ.get('DEEPSAT_PARAMS', '{}')
+    read_settings(environ_settings)
 
 
 def timed(func):
