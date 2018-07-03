@@ -63,6 +63,8 @@ TODO: add previous results, links do neptune
 
 [Presentation](https://docs.google.com/document/d/1pAdKJz3fwAE5MTa77yuZKy8FCkn_H04nxdJ0lbxpDTM/edit?usp=sharing)
 
+[LSTM experiments](https://docs.google.com/document/d/1MG_PA4y0jn6vV1nTy43wvsKeK1-5uRPRFPSarLCJ2m4/edit#heading=h.nfl3p9glf50k)
+
 ### References:
 
 [Neurosat](https://arxiv.org/pdf/1802.03685.pdf, implementacja: https://github.com/dselsam/neurosat)
