@@ -33,6 +33,14 @@ Once you have the basic setup run
 ```bash
 python graph_policy.py
 ```
+or
+```bash
+python neurosat_policy.py
+```
+
+#### How to run the full pipeline?
+
+TODO: explain how to train and later test on the generic test set. Basically train and run a notebook. It would be nice to automate it and present jointly the results (in Neptune).
 
 ### Quantitive observations
 
