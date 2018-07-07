@@ -11,6 +11,7 @@ import sys
 import json
 import multiprocessing
 import os
+from deepsense import neptune
 
 # HYPER PARAMETERES ------------------------------------------
 
@@ -34,6 +35,9 @@ LEARNING_RATE = 0.001
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
 BATCH_SIZE = 64
+
+NEPTUNE_ENABLED = False
+BOARD_WRITE_GRAPH = True
 
 # Size of dataset
 
@@ -274,6 +278,11 @@ def gen_cnfs_with_labels(pool):
 
 
 def main():
+    if NEPTUNE_ENABLED:
+        context = neptune.Context()
+        context.integrate_with_tensorflow()
+
+
     set_flags()
 
     print("cpu number:", multiprocessing.cpu_count())
@@ -325,7 +334,8 @@ def main():
     train_writer.add_summary(summary)
 
     with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
-        train_writer.add_graph(sess.graph)
+        if BOARD_WRITE_GRAPH:
+            train_writer.add_graph(sess.graph)
 
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
