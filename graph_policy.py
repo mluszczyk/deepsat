@@ -289,12 +289,11 @@ def gen_cnfs_with_labels(pool):
 
 
 def main():
+    set_flags()
+
     if NEPTUNE_ENABLED:
         context = neptune.Context()
         context.integrate_with_tensorflow()
-
-
-    set_flags()
 
     print("cpu number:", multiprocessing.cpu_count())
 
