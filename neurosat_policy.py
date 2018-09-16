@@ -302,7 +302,7 @@ def gen_labels(pool, cnfs):
 @timed
 def gen_cnfs_with_labels(pool):
     if SR_GENERATOR:
-        cnfs = get_sats_SR(BATCH_SIZE, MIN_VARIABLE_NUM, VARIABLE_NUM)
+        cnfs = get_sats_SR(BATCH_SIZE, MIN_VARIABLE_NUM, CLAUSE_NUM, VARIABLE_NUM)
     else:
         cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
                                 min_clause_number=MIN_CLAUSE_NUM)
