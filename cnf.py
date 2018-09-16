@@ -21,18 +21,20 @@ def get_random_kcnf(k, n, m):
     return CNF(clauses)
 
 
-def get_sats_SR(sample_number, min_variable_number, max_variable_number=None):
+def get_sats_SR(sample_number, min_variable_number, clause_number, max_variable_number=None):
     if max_variable_number is None:
         max_variable_number = min_variable_number
-    rcnfs = [get_sat_SR(min_variable_number, max_variable_number) for _ in range(sample_number)]
+    rcnfs = [get_sat_SR(min_variable_number, max_variable_number, clause_number) for _ in range(sample_number)]
     return rcnfs
 
 
-def get_sat_SR(min_variable_number, max_variable_number):
+def get_sat_SR(min_variable_number, max_variable_number, clause_number):
     variable_number = random.randint(min_variable_number, max_variable_number)
     clauses = []
     while pycosat.solve(clauses) != 'UNSAT':
         clauses.append(get_SR(variable_number))
+        if len(clauses) > clause_number:
+            clauses = []
     if random.random() > 0.5:
         clauses = clauses[:-1]
     return CNF(clauses)
