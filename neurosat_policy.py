@@ -227,6 +227,7 @@ class Graph:
                          axis=1))) / (tf.reduce_sum(self.sat_labels))
             '''
 
+            # we do not want to count unsat into policy_error
             self.policy_error = tf.reduce_sum(tf.abs(
                 tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
                   tf.reduce_sum(self.sat_labels)) / (tf.cast(variable_num, dtype=tf.float32) * 2.0)
@@ -421,13 +422,14 @@ def main():
 
             complete_step()
 
-            summary_values = [
-                summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                          simple_value=fun_time/BATCH_SIZE)
-                for fun_name, fun_time in LAST_TIMED.items()
-            ]
-            summary = summary_pb2.Summary(value=summary_values)
-            train_writer.add_summary(summary, global_samples)
+            if global_batch % 10 == 0:
+                summary_values = [
+                    summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
+                                              simple_value=fun_time/BATCH_SIZE)
+                    for fun_name, fun_time in LAST_TIMED.items()
+                ]
+                summary = summary_pb2.Summary(value=summary_values)
+                train_writer.add_summary(summary, global_samples)
 
             global_samples += BATCH_SIZE
         saver.save(sess, MODEL_PREFIX, global_step=global_samples)
