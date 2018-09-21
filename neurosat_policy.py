@@ -18,6 +18,7 @@ from deepsense import neptune
 # Data properties
 VARIABLE_NUM = 8
 MIN_VARIABLE_NUM = 8
+# Only for not SR
 CLAUSE_SIZE = 3
 CLAUSE_NUM = 40
 MIN_CLAUSE_NUM = 1
@@ -373,6 +374,7 @@ def main():
         train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
 
+        # inputs represent green arrows, that is the "or" operation
         @timed
         def nn_train(cnfs, sat_labels, policy_labels):
             inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
