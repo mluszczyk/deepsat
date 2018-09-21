@@ -458,7 +458,7 @@ def main():
 
             complete_step()
 
-            if global_batch % 10 == 0:
+            if global_batch % 50 == 0:
                 summary_values = [
                     summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
                                               simple_value=fun_time/BATCH_SIZE)
