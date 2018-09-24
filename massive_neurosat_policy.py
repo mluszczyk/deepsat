@@ -14,12 +14,13 @@ import os
 from deepsense import neptune
 from tensorflow_on_slurm import tf_config_from_slurm
 
-cluster, my_job_name, my_task_index = tf_config_from_slurm(ps_number=1)
+ps_number = 2
+cluster, my_job_name, my_task_index = tf_config_from_slurm(ps_number=ps_number)
 cluster_spec = tf.train.ClusterSpec(cluster)
 server = tf.train.Server(server_or_cluster_def=cluster_spec,
                          job_name=my_job_name,
                          task_index=my_task_index)
-
+print("My job name {}".format(my_job_name))
 if my_job_name == 'ps':
     server.join()
     sys.exit(0)
@@ -33,7 +34,7 @@ is_chief = my_task_index == 0
 VARIABLE_NUM = 8
 MIN_VARIABLE_NUM = 8
 CLAUSE_SIZE = 3
-CLAUSE_NUM = 40
+CLAUSE_NUM = 150
 MIN_CLAUSE_NUM = 1
 
 SR_GENERATOR = True
@@ -109,7 +110,8 @@ class Graph:
     def __init__(self):
         BATCH_SIZE = None
         with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
-                                                      ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy)):
+                 ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy(num_tasks=ps_number, 
+                            load_fn= tf.contrib.training.byte_size_load_fn))):
             self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
             self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
             self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
@@ -337,6 +339,8 @@ def bias_variable(shape):
     return v
 
 def main():
+    import tensorflow as tf
+
     set_flags()
 
     if NEPTUNE_ENABLED:
@@ -380,95 +384,106 @@ def main():
     MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
     train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
 
-    with open(__file__, "r") as fil:
-        # ending tag is broken, because we print ourselves!
-        run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
-        value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
-    text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
-    meta = tf.SummaryMetadata()
-    meta.plugin_data.plugin_name = "text"
+    # with open(__file__, "r") as fil:
+    #    # ending tag is broken, because we print ourselves!
+    #    run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
+    #    value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
+    # text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
+    # meta = tf.SummaryMetadata()
+    # meta.plugin_data.plugin_name = "text"
     summary = tf.Summary()
-    summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
+    # summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
     train_writer.add_summary(summary)
 
-    if BOARD_WRITE_GRAPH:
-        train_writer.add_graph(sess.graph)
 
     opt = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
 
     opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=len(cluster['worker']),
                                              total_num_replicas=len(cluster['worker']))
     global_step = bias_variable([])
-    train_op = opt.minimize(modelloss, global_step=global_step)
+    train_op = opt.minimize(model.loss, global_step=global_step)
     sync_replicas_hook = opt.make_session_run_hook(is_chief)
 
-    with tf.train.MonitoredTrainingSession(master=server.target,
-                                           is_chief=is_chief,
-                                           hooks=[sync_replicas_hook],
-                                           config=tf.ConfigProto(log_device_placement=True)) as sess, \
-         multiprocessing.Pool(PROCESSOR_NUM) as pool:
+    # config=tf.ConfigProto(log_device_placement=True)) as sess, \
+    pool = multiprocessing.Pool(PROCESSOR_NUM)
+    #     multiprocessing.Pool(PROCESSOR_NUM) as pool:
+        
+    # if BOARD_WRITE_GRAPH:
+    #    train_writer.add_graph(sess.graph)
 
-        sess.run(tf.global_variables_initializer())
-        @timed
-        def nn_train(cnfs, sat_labels, policy_labels):
-            inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
-            summary, _, loss, probs = sess.run(
-                [merged_summaries, train_op, model.loss,
-                 model.policy_probabilities], feed_dict={
-                    model.inputs: inputs,
-                    model.policy_labels: policy_labels,
-                    model.sat_labels: sat_labels,
-                })
+    # sess.run(tf.global_variables_initializer())
+    @timed
+    def nn_train(sess, cnfs, sat_labels, policy_labels):
+        inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
+        summary, _, loss, probs = sess.run(
+            [merged_summaries, train_op, model.loss,
+             model.policy_probabilities], feed_dict={
+                model.inputs: inputs,
+                model.policy_labels: policy_labels,
+                model.sat_labels: sat_labels,
+            })
+        train_writer.add_summary(summary, global_samples)
+
+    @timed
+    def complete_step(sess):
+        cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
+        nn_train(sess, cnfs, sat_labels, policy_labels)
+
+    saver = tf.train.Saver()
+
+    global_samples = 0
+    start_time = time.time()
+    print_step = 1
+    print_step_multiply = 2
+    steps_number = int(SAMPLES/BATCH_SIZE) + 1
+    sess = tf.train.MonitoredTrainingSession(master=server.target,
+                                       is_chief=is_chief,
+                                       hooks=[sync_replicas_hook])
+    for global_batch in range(steps_number):
+        # print("Global step {}, my index {}".format(global_batch, my_task_index))
+        if global_batch % len(cluster['worker']) != my_task_index:
+            print("Global step {}, my index {} I am passing".format(global_batch, my_task_index))
+            continue
+        print("Global step {}, my index {} I am taking".format(global_batch, my_task_index))
+        if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
+            if global_batch == print_step:
+                print_step *= print_step_multiply
+            saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
+            now_time = time.time()
+            time_elapsed = now_time - start_time
+            if global_batch == 0:
+                time_remaining = "unknown"
+                time_total = "unknown"
+            else:
+                time_remaining = (time_elapsed / global_batch)\
+                                 * (steps_number - global_batch)
+                time_total = time_remaining + time_elapsed
+            print("Step {}, {}%\n"
+                  "\tsteps left: {}\n"
+                  "\ttime: {} s\n"
+                  "\test remaining: {} s\n"
+                  "\test total: {} s".format(
+                global_batch, round(100.*global_batch/steps_number, 1),
+                steps_number-global_batch, time_elapsed, time_remaining,
+                time_total))
+
+        # with tf.train.MonitoredTrainingSession(master=server.target,
+        #                               is_chief=is_chief,
+        #                               hooks=[sync_replicas_hook]) as sess:
+        complete_step(sess)
+
+        if global_batch % 50 == 0:
+            summary_values = [
+                summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
+                                          simple_value=fun_time/BATCH_SIZE)
+                for fun_name, fun_time in LAST_TIMED.items()
+            ]
+            summary = summary_pb2.Summary(value=summary_values)
             train_writer.add_summary(summary, global_samples)
 
-        @timed
-        def complete_step():
-            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
-            nn_train(cnfs, sat_labels, policy_labels)
-
-        saver = tf.train.Saver()
-
-        global_samples = 0
-        start_time = time.time()
-        print_step = 1
-        print_step_multiply = 2
-        steps_number = int(SAMPLES/BATCH_SIZE) + 1
-        for global_batch in range(steps_number):
-            if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
-                if global_batch == print_step:
-                    print_step *= print_step_multiply
-                saver.save(sess, MODEL_PREFIX, global_step=global_samples)
-                now_time = time.time()
-                time_elapsed = now_time - start_time
-                if global_batch == 0:
-                    time_remaining = "unknown"
-                    time_total = "unknown"
-                else:
-                    time_remaining = (time_elapsed / global_batch)\
-                                     * (steps_number - global_batch)
-                    time_total = time_remaining + time_elapsed
-                print("Step {}, {}%\n"
-                      "\tsteps left: {}\n"
-                      "\ttime: {} s\n"
-                      "\test remaining: {} s\n"
-                      "\test total: {} s".format(
-                    global_batch, round(100.*global_batch/steps_number, 1),
-                    steps_number-global_batch, time_elapsed, time_remaining,
-                    time_total))
-
-            complete_step()
-
-            if global_batch % 50 == 0:
-                summary_values = [
-                    summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                              simple_value=fun_time/BATCH_SIZE)
-                    for fun_name, fun_time in LAST_TIMED.items()
-                ]
-                summary = summary_pb2.Summary(value=summary_values)
-                train_writer.add_summary(summary, global_samples)
-
-            global_samples += BATCH_SIZE
-        saver.save(sess, MODEL_PREFIX, global_step=global_samples)
+        global_samples += BATCH_SIZE
+        sys.stdout.flush()
+    saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
 
 
 if __name__ == "__main__":
