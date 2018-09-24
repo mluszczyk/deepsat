@@ -39,6 +39,16 @@ def get_sat_SR(min_variable_number, max_variable_number, clause_number):
         clauses = clauses[:-1]
     return CNF(clauses)
 
+def get_pos_SR(min_variable_number, max_variable_number, clause_number):
+    variable_number = random.randint(min_variable_number, max_variable_number)
+    clauses = []
+    while pycosat.solve(clauses) != 'UNSAT':
+        clauses.append(get_SR(variable_number))
+        if len(clauses) > clause_number:
+            clauses = []
+    clauses = clauses[:-1]
+    return CNF(clauses)
+
 
 def get_SR(variable_number):
     # As authors stated, 2 + Bernoulli(0.3) + Geo(0.4). This has actually E[k] = 4.8
