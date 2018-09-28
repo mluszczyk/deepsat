@@ -14,8 +14,9 @@ import os
 from deepsense import neptune
 from tensorflow_on_slurm import tf_config_from_slurm
 
-ps_number = 2
+ps_number = 1
 cluster, my_job_name, my_task_index = tf_config_from_slurm(ps_number=ps_number)
+print("My task index {}".format(my_task_index))
 cluster_spec = tf.train.ClusterSpec(cluster)
 server = tf.train.Server(server_or_cluster_def=cluster_spec,
                          job_name=my_job_name,
@@ -31,20 +32,20 @@ is_chief = my_task_index == 0
 # HYPERPARAMETERS ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 8
-MIN_VARIABLE_NUM = 8
+VARIABLE_NUM = 25
+MIN_VARIABLE_NUM = 25
 CLAUSE_SIZE = 3
-CLAUSE_NUM = 150
+CLAUSE_NUM = 1000
 MIN_CLAUSE_NUM = 1
 
 SR_GENERATOR = True
 
 # Neural net
-EMBEDDING_SIZE = 128
-LEVEL_NUMBER = 10
+EMBEDDING_SIZE = 64
+LEVEL_NUMBER = 30
 
 POS_NEG_ACTIVATION = None
-HIDDEN_LAYERS = [128, 128]
+HIDDEN_LAYERS = [64, 64]
 HIDDEN_ACTIVATION = tf.nn.relu
 EMBED_ACTIVATION = tf.nn.tanh
 
@@ -52,7 +53,7 @@ LEARNING_RATE = 0.001
 
 POLICY_LOSS_WEIGHT = 1
 SAT_LOSS_WEIGHT = 1
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 
 NEPTUNE_ENABLED = False
 BOARD_WRITE_GRAPH = True
@@ -109,9 +110,13 @@ def assert_shape(matrix, shape: list):
 class Graph:
     def __init__(self):
         BATCH_SIZE = None
+        # with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
+        #        ps_strategy=tf.contrib.training.RandomStrategy(num_ps_tasks=ps_number))),\
+        #     tf.device('/job:worker/task:{}'.format(my_task_index)): 
         with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
                  ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy(num_tasks=ps_number, 
-                            load_fn= tf.contrib.training.byte_size_load_fn))):
+                 load_fn= tf.contrib.training.byte_size_load_fn),
+                 worker_device='/job:worker/task:{}'.format(my_task_index))): 
             self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
             self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
             self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
@@ -347,12 +352,15 @@ def main():
         context = neptune.Context()
         context.integrate_with_tensorflow()
 
+    print("My task index {}".format(my_task_index))
     print("cpu number:", multiprocessing.cpu_count())
+    sys.stdout.flush()
 
     tf.reset_default_graph()
     model = Graph()
 
     print()
+    print("My task index {}".format(my_task_index))
     print("PARAMETERS")
     total_parameters = 0
     for variable in tf.trainable_variables():
@@ -367,10 +375,10 @@ def main():
         print(variable_parameters)
         total_parameters += variable_parameters
     print("TOTAL PARAMS:", total_parameters)
+    print("My task index {}".format(my_task_index))
+    sys.stdout.flush()
 
     np.set_printoptions(precision=2, suppress=True)
-
-    merged_summaries = tf.summary.merge_all()
 
     SUMMARY_DIR = "summaries"
     MODEL_DIR = "models"
@@ -378,6 +386,8 @@ def main():
 
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(SUMMARY_DIR, exist_ok=True)
+    print("My task index {} - created directories".format(my_task_index))
+    sys.stdout.flush()
 
     DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
     SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
@@ -394,24 +404,30 @@ def main():
     summary = tf.Summary()
     # summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
     train_writer.add_summary(summary)
+    print("My task index {} - created summaries".format(my_task_index))
+    sys.stdout.flush()
 
 
-    opt = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
+    # with tf.device('/job:worker/task:{}'.format(my_task_index)): 
+    with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
+             ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy(num_tasks=ps_number, 
+             load_fn= tf.contrib.training.byte_size_load_fn),
+             worker_device='/job:worker/task:{}'.format(my_task_index))): 
+        merged_summaries = tf.summary.merge_all()
+        opt = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
 
-    opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=len(cluster['worker']),
-                                             total_num_replicas=len(cluster['worker']))
-    global_step = bias_variable([])
-    train_op = opt.minimize(model.loss, global_step=global_step)
-    sync_replicas_hook = opt.make_session_run_hook(is_chief)
+        opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=len(cluster['worker']),
+                                                 total_num_replicas=len(cluster['worker']))
+        print("My task index {} - created optimizer".format(my_task_index))
+        global_step = bias_variable([])
+        train_op = opt.minimize(model.loss, global_step=global_step)
+        sync_replicas_hook = opt.make_session_run_hook(is_chief)
+        print("My task index {} - created optimizer - end".format(my_task_index))
+        sys.stdout.flush()
 
-    # config=tf.ConfigProto(log_device_placement=True)) as sess, \
-    pool = multiprocessing.Pool(PROCESSOR_NUM)
-    #     multiprocessing.Pool(PROCESSOR_NUM) as pool:
-        
-    # if BOARD_WRITE_GRAPH:
-    #    train_writer.add_graph(sess.graph)
+    print("My task index {} - am I chief? {}".format(my_task_index, is_chief))
+    sys.stdout.flush()
 
-    # sess.run(tf.global_variables_initializer())
     @timed
     def nn_train(sess, cnfs, sat_labels, policy_labels):
         inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
@@ -422,6 +438,13 @@ def main():
                 model.policy_labels: policy_labels,
                 model.sat_labels: sat_labels,
             })
+        # _, loss, probs = sess.run(
+        #    [train_op, model.loss,
+        #     model.policy_probabilities], feed_dict={
+        #        model.inputs: inputs,
+        #        model.policy_labels: policy_labels,
+        #        model.sat_labels: sat_labels,
+        #    })
         train_writer.add_summary(summary, global_samples)
 
     @timed
@@ -430,6 +453,8 @@ def main():
         nn_train(sess, cnfs, sat_labels, policy_labels)
 
     saver = tf.train.Saver()
+    print("My task index {} - started saver".format(my_task_index))
+    sys.stdout.flush()
 
     global_samples = 0
     start_time = time.time()
@@ -438,13 +463,39 @@ def main():
     steps_number = int(SAMPLES/BATCH_SIZE) + 1
     sess = tf.train.MonitoredTrainingSession(master=server.target,
                                        is_chief=is_chief,
-                                       hooks=[sync_replicas_hook])
+                                       hooks=[sync_replicas_hook],
+                                       config=tf.ConfigProto(allow_soft_placement=True, 
+                                                    log_device_placement=False))
+    # sess = tf.train.MonitoredTrainingSession(master=server.target,
+    #                                   is_chief=is_chief,
+    #                                   hooks=[sync_replicas_hook],
+    #                                   config=tf.ConfigProto(allow_soft_placement=True, 
+    #                                                log_device_placement=True,
+    #                                                intra_op_parallelism_threads=12,
+    #                                                inter_op_parallelism_threads=12))
+    print("My task index {} - created sess".format(my_task_index))
+    sys.stdout.flush()
+
+    
+    # TGREL: you shouldn't manually initialize when using MonitoredTrainingSession
+    #sess.run(tf.global_variables_initializer())
+
+    print("My task index {} - initialized variables".format(my_task_index))
+    # if BOARD_WRITE_GRAPH:
+    #    train_writer.add_graph(sess.graph)
+
+    pool = multiprocessing.Pool(PROCESSOR_NUM)
+    print("My task index {} - created pool".format(my_task_index))
+    sys.stdout.flush()
+
     for global_batch in range(steps_number):
         # print("Global step {}, my index {}".format(global_batch, my_task_index))
         if global_batch % len(cluster['worker']) != my_task_index:
             print("Global step {}, my index {} I am passing".format(global_batch, my_task_index))
+            sys.stdout.flush()
             continue
         print("Global step {}, my index {} I am taking".format(global_batch, my_task_index))
+        sys.stdout.flush()
         if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
             if global_batch == print_step:
                 print_step *= print_step_multiply
@@ -466,10 +517,8 @@ def main():
                 global_batch, round(100.*global_batch/steps_number, 1),
                 steps_number-global_batch, time_elapsed, time_remaining,
                 time_total))
+            sys.stdout.flush()
 
-        # with tf.train.MonitoredTrainingSession(master=server.target,
-        #                               is_chief=is_chief,
-        #                               hooks=[sync_replicas_hook]) as sess:
         complete_step(sess)
 
         if global_batch % 50 == 0:
