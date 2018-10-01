@@ -59,15 +59,19 @@ TODO: add previous results, links do neptune
 
 ### Our documents:
 
-[Workplan](https://docs.google.com/presentation/d/1VpJoB0SrUreXzPu6HHja7ToTuy7CJmTub-2Mg_Qr1d0/edit?usp=sharing)
+[Workplan](https://docs.google.com/document/d/1pAdKJz3fwAE5MTa77yuZKy8FCkn_H04nxdJ0lbxpDTM/edit?usp=sharing)
 
-[Presentation](https://docs.google.com/document/d/1pAdKJz3fwAE5MTa77yuZKy8FCkn_H04nxdJ0lbxpDTM/edit?usp=sharing)
+[Presentation, Bumerang Workshop (Budapest), September 25, 2018](https://docs.google.com/presentation/d/1OdEJsB6DqgB0NA-eG88vmHI2uE5U0k54BRvbgXrOdwY/edit)
+
+[Presentation, April 17, 2018](https://docs.google.com/presentation/d/1VpJoB0SrUreXzPu6HHja7ToTuy7CJmTub-2Mg_Qr1d0/edit?usp=sharing)
+
+[Presentation, Feb 27, 2018](https://docs.google.com/presentation/d/1N0xV2XvMllsjwAKTZBAEyyKKkqdHcgAFJN4ek3sPA7A/edit)
 
 [LSTM experiments](https://docs.google.com/document/d/1MG_PA4y0jn6vV1nTy43wvsKeK1-5uRPRFPSarLCJ2m4/edit#heading=h.nfl3p9glf50k)
 
 ### References:
 
-[Neurosat](https://arxiv.org/pdf/1802.03685.pdf, implementacja: https://github.com/dselsam/neurosat)
+Neurosat: [arxiv](https://arxiv.org/pdf/1802.03685.pdf), [code](https://github.com/dselsam/neurosat)
 
 [Proof synthesis for propositional logic](https://arxiv.org/abs/1805.11799)
 
@@ -81,6 +85,9 @@ GamePad
 
 
 
-### Old repo (Theano dependent)
+### Old repo (Theano dependent, related to eqnet)
+
+https://github.com/mluszczyk/sat-notebooks
+
 
 
