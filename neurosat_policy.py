@@ -1,21 +1,22 @@
 # coding: utf-8
-import functools
-from functools import wraps
+import multiprocessing
+
 import tensorflow as tf
 import numpy as np
-from cnf import get_random_kcnfs, get_sats_SR
 import datetime
 import time
 from tensorflow.core.framework import summary_pb2
 import sys
 import json
-import multiprocessing
 import os
 from deepsense import neptune
 
 # HYPERPARAMETERS ------------------------------------------
 
 # Data properties
+import cnf_dataset
+from timed import timed, LAST_TIMED
+
 VARIABLE_NUM = 8
 MIN_VARIABLE_NUM = 8
 # Only for not SR
@@ -52,8 +53,6 @@ PROCESSOR_NUM = None  # defaults to all processors
 
 # ------------------------------------------
 
-LAST_TIMED = dict()
-
 
 def read_settings(str_settings):
     settings = json.loads(str_settings)
@@ -74,17 +73,6 @@ def set_flags():
 
     environ_settings = os.environ.get('DEEPSAT_PARAMS', '{}')
     read_settings(environ_settings)
-
-
-def timed(func):
-    @wraps(func)
-    def new_func(*args, **kwargs):
-        start = time.time()
-        results = func(*args, **kwargs)
-        end = time.time()
-        LAST_TIMED[func.__name__] = end - start
-        return results
-    return new_func
 
 
 def assert_shape(matrix, shape: list):
@@ -257,61 +245,6 @@ class Graph:
                           tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
-def set_and_sat(triple):
-    cnf, is_satisfiable, literal = triple
-    if not is_satisfiable or not abs(literal) in cnf.vars:
-        return False
-    cnf = cnf.set_var(literal)
-    return cnf.satisfiable()
-
-
-def satisfiable(cnf):
-    return cnf.satisfiable()
-
-
-def clauses_to_matrix(clauses, max_clause_num=None, max_variable_num=None):
-    if max_clause_num is None:
-        max_clause_num = CLAUSE_NUM
-    if max_variable_num is None:
-        max_variable_num = VARIABLE_NUM
-    def var_in_clause_val(var, i):
-        if i >= len(clauses):
-            return [0.0, 0.0]
-        return [1.0 if var in clauses[i] else 0.0,
-                1.0 if -var in clauses[i] else 0.0]
-    result = [[var_in_clause_val(var, i) for i in range(max_clause_num)]
-              for var in range(1, max_variable_num+1)]
-    return result
-
-
-@timed
-def gen_labels(pool, cnfs):
-    sat_labels = pool.map(satisfiable, cnfs)
-
-    sats_to_check = [(cnf, is_satisfiable, literal)
-                     for (cnf, is_satisfiable) in zip(cnfs, sat_labels)
-                     for v in range(1, VARIABLE_NUM + 1)
-                     for literal in [v, -v]]
-    policy_labels = np.asarray(pool.map(set_and_sat, sats_to_check))
-    policy_labels = np.asarray(policy_labels).reshape(len(cnfs), VARIABLE_NUM, 2)
-    assert len(cnfs) == len(sat_labels) == policy_labels.shape[0]
-    assert policy_labels.shape[1] == VARIABLE_NUM
-    assert policy_labels.shape[2] == 2
-
-    return sat_labels, policy_labels
-
-
-@timed
-def gen_cnfs_with_labels(pool):
-    if SR_GENERATOR:
-        cnfs = get_sats_SR(BATCH_SIZE, MIN_VARIABLE_NUM, CLAUSE_NUM, VARIABLE_NUM)
-    else:
-        cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
-                                min_clause_number=MIN_CLAUSE_NUM)
-    sat_labels, policy_labels = gen_labels(pool, cnfs)
-    return cnfs, sat_labels, policy_labels
-
-
 def main():
     set_flags()
 
@@ -367,7 +300,11 @@ def main():
     summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
     train_writer.add_summary(summary)
 
-    with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
+    datagen_options = {k: globals()[k]
+                       for k in ["VARIABLE_NUM", "SR_GENERATOR", "BATCH_SIZE", "MIN_VARIABLE_NUM",
+                                 "CLAUSE_NUM", "CLAUSE_SIZE", "MIN_CLAUSE_NUM", "PROCESSOR_NUM"]}
+
+    with tf.Session() as sess, cnf_dataset.PoolDatasetGenerator(datagen_options) as dataset_generator:
         if BOARD_WRITE_GRAPH:
             train_writer.add_graph(sess.graph)
 
@@ -376,8 +313,7 @@ def main():
 
         # inputs represent green arrows, that is the "or" operation
         @timed
-        def nn_train(cnfs, sat_labels, policy_labels):
-            inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
+        def nn_train(inputs, sat_labels, policy_labels):
             summary, _, loss, probs = sess.run(
                 [merged_summaries, train_op, model.loss,
                  model.policy_probabilities], feed_dict={
@@ -389,7 +325,7 @@ def main():
 
         @timed
         def complete_step():
-            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
+            cnfs, sat_labels, policy_labels = dataset_generator.generate_batch()
             nn_train(cnfs, sat_labels, policy_labels)
 
         saver = tf.train.Saver()
@@ -400,7 +336,7 @@ def main():
         print_step_multiply = 2
         steps_number = int(SAMPLES/BATCH_SIZE) + 1
         for global_batch in range(steps_number):
-            if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
+            if global_batch % max(int(steps_number / 1000), 1) == 0 or global_batch == print_step:
                 if global_batch == print_step:
                     print_step *= print_step_multiply
                 saver.save(sess, MODEL_PREFIX, global_step=global_samples)
