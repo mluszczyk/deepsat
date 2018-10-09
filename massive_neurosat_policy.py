@@ -3,7 +3,7 @@ import functools
 from functools import wraps
 import tensorflow as tf
 import numpy as np
-from cnf import get_random_kcnfs, get_sats_SR
+from cnf_new import get_random_kcnfs, get_sats_SR
 import datetime
 import time
 from tensorflow.core.framework import summary_pb2
@@ -32,20 +32,20 @@ is_chief = my_task_index == 0
 # HYPERPARAMETERS ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 25
-MIN_VARIABLE_NUM = 25
+VARIABLE_NUM = 100
+MIN_VARIABLE_NUM = 100
 CLAUSE_SIZE = 3
-CLAUSE_NUM = 1000
+CLAUSE_NUM = 1200
 MIN_CLAUSE_NUM = 1
 
 SR_GENERATOR = True
 
 # Neural net
-EMBEDDING_SIZE = 64
-LEVEL_NUMBER = 30
+EMBEDDING_SIZE = 128
+LEVEL_NUMBER = 50
 
 POS_NEG_ACTIVATION = None
-HIDDEN_LAYERS = [64, 64]
+HIDDEN_LAYERS = [128, 128]
 HIDDEN_ACTIVATION = tf.nn.relu
 EMBED_ACTIVATION = tf.nn.tanh
 
@@ -58,8 +58,15 @@ BATCH_SIZE = 128
 NEPTUNE_ENABLED = False
 BOARD_WRITE_GRAPH = True
 
-# Size of dataset
+# Restoration/saver option
+# META_FILE = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-18-10-03-182145/model-24064.meta"
+# META_FILE = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-18-10-07-021646/model-116096.meta"
+# META_DIR = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-restorer/"
+RESTORE = True
+DATESAVE = "18-10-09-041459"
+# META_DIR = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-restorer-18-10-09-041459-var-100-lev-50"
 
+# Size of dataset
 SAMPLES = 10 ** 8
 
 # Multiprocessing
@@ -69,6 +76,35 @@ PROCESSOR_NUM = None  # defaults to all processors
 
 LAST_TIMED = dict()
 
+from collections import Counter
+import linecache
+import os
+import tracemalloc
+
+def display_top(snapshot, key_type='lineno', limit=3):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        # replace "/path/to/module/file.py" with "module/file.py"
+        filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
 
 def read_settings(str_settings):
     settings = json.loads(str_settings)
@@ -110,9 +146,6 @@ def assert_shape(matrix, shape: list):
 class Graph:
     def __init__(self):
         BATCH_SIZE = None
-        # with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
-        #        ps_strategy=tf.contrib.training.RandomStrategy(num_ps_tasks=ps_number))),\
-        #     tf.device('/job:worker/task:{}'.format(my_task_index)): 
         with tf.device(tf.train.replica_device_setter(cluster=cluster_spec,
                  ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy(num_tasks=ps_number, 
                  load_fn= tf.contrib.training.byte_size_load_fn),
@@ -348,6 +381,8 @@ def main():
 
     set_flags()
 
+    tracemalloc.start()
+
     if NEPTUNE_ENABLED:
         context = neptune.Context()
         context.integrate_with_tensorflow()
@@ -380,30 +415,37 @@ def main():
 
     np.set_printoptions(precision=2, suppress=True)
 
-    SUMMARY_DIR = "summaries"
+    # SUMMARY_DIR = "summaries"
     MODEL_DIR = "models"
     MODEL_NAME = "neuropol"
 
     os.makedirs(MODEL_DIR, exist_ok=True)
-    os.makedirs(SUMMARY_DIR, exist_ok=True)
+    # os.makedirs(SUMMARY_DIR, exist_ok=True)
     print("My task index {} - created directories".format(my_task_index))
     sys.stdout.flush()
 
-    DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
-    SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
-    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
-    train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
+    # SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
+    # MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
+    if RESTORE:
+        DATESTR = DATESAVE
+    else:
+        DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
 
-    # with open(__file__, "r") as fil:
-    #    # ending tag is broken, because we print ourselves!
-    #    run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
-    #    value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
-    # text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
-    # meta = tf.SummaryMetadata()
-    # meta.plugin_data.plugin_name = "text"
+    META_DIR = MODEL_DIR + "/" + MODEL_NAME + "-restorer-" + DATESTR \
+                + "-var-" + str(VARIABLE_NUM) \
+                + "-lev-" + str(LEVEL_NUMBER)
+    # train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
+
+    with open(__file__, "r") as fil:
+        # ending tag is broken, because we print ourselves!
+        run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
+        value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
+    text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
+    meta = tf.SummaryMetadata()
+    meta.plugin_data.plugin_name = "text"
     summary = tf.Summary()
-    # summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
-    train_writer.add_summary(summary)
+    summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
+    # train_writer.add_summary(summary)
     print("My task index {} - created summaries".format(my_task_index))
     sys.stdout.flush()
 
@@ -419,7 +461,11 @@ def main():
         opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=len(cluster['worker']),
                                                  total_num_replicas=len(cluster['worker']))
         print("My task index {} - created optimizer".format(my_task_index))
-        global_step = bias_variable([])
+        # global_step = bias_variable([])
+        # global_step definition below picked from 
+        # https://www.tensorflow.org/deploy/distributed
+        # global_step = tf.contrib.framework.get_or_create_global_step()
+        global_step = tf.train.get_or_create_global_step()
         train_op = opt.minimize(model.loss, global_step=global_step)
         sync_replicas_hook = opt.make_session_run_hook(is_chief)
         print("My task index {} - created optimizer - end".format(my_task_index))
@@ -445,24 +491,27 @@ def main():
         #        model.policy_labels: policy_labels,
         #        model.sat_labels: sat_labels,
         #    })
-        train_writer.add_summary(summary, global_samples)
+        # train_writer.add_summary(summary, global_samples)
 
     @timed
     def complete_step(sess):
         cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
         nn_train(sess, cnfs, sat_labels, policy_labels)
 
-    saver = tf.train.Saver()
-    print("My task index {} - started saver".format(my_task_index))
-    sys.stdout.flush()
 
     global_samples = 0
     start_time = time.time()
     print_step = 1
     print_step_multiply = 2
     steps_number = int(SAMPLES/BATCH_SIZE) + 1
+    saver = tf.train.Saver()
+    print("My task index {} - started saver".format(my_task_index))
+    sys.stdout.flush()
     sess = tf.train.MonitoredTrainingSession(master=server.target,
                                        is_chief=is_chief,
+                                       checkpoint_dir=META_DIR,
+                                       save_checkpoint_steps=20, 
+                                       save_summaries_steps=5,
                                        hooks=[sync_replicas_hook],
                                        config=tf.ConfigProto(allow_soft_placement=True, 
                                                     log_device_placement=False))
@@ -475,12 +524,20 @@ def main():
     #                                                inter_op_parallelism_threads=12))
     print("My task index {} - created sess".format(my_task_index))
     sys.stdout.flush()
-
+    ckpt = tf.train.get_checkpoint_state(META_DIR)
+    if ckpt:
+        print("Checkpoint {} at the path {} was restored".format(ckpt,ckpt.model_checkpoint_path))
     
+    #if RESTORE:
+    #    # saver = tf.train.import_meta_graph(META_FILE, clear_devices=True)
+    #    saver.restore(sess, tf.train.latest_checkpoint(os.path.dirname(META_FILE)))
+    #    print("My task index {} - restored saver from {}".format(my_task_index,META_FILE))
+    #else:
+    #    saver = tf.train.Saver()
+
     # TGREL: you shouldn't manually initialize when using MonitoredTrainingSession
     #sess.run(tf.global_variables_initializer())
-
-    print("My task index {} - initialized variables".format(my_task_index))
+    # print("My task index {} - initialized variables".format(my_task_index))
     # if BOARD_WRITE_GRAPH:
     #    train_writer.add_graph(sess.graph)
 
@@ -491,15 +548,15 @@ def main():
     for global_batch in range(steps_number):
         # print("Global step {}, my index {}".format(global_batch, my_task_index))
         if global_batch % len(cluster['worker']) != my_task_index:
-            print("Global step {}, my index {} I am passing".format(global_batch, my_task_index))
-            sys.stdout.flush()
+            # print("Global step {}, my index {} I am passing".format(global_batch, my_task_index))
+            # sys.stdout.flush()
             continue
         print("Global step {}, my index {} I am taking".format(global_batch, my_task_index))
         sys.stdout.flush()
-        if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
+        if global_batch % int(steps_number / 10000) == 0 or global_batch == print_step:
             if global_batch == print_step:
                 print_step *= print_step_multiply
-            saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
+            # saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
             now_time = time.time()
             time_elapsed = now_time - start_time
             if global_batch == 0:
@@ -517,22 +574,25 @@ def main():
                 global_batch, round(100.*global_batch/steps_number, 1),
                 steps_number-global_batch, time_elapsed, time_remaining,
                 time_total))
+            snapshot = tracemalloc.take_snapshot()
+            display_top(snapshot)
             sys.stdout.flush()
 
         complete_step(sess)
 
-        if global_batch % 50 == 0:
-            summary_values = [
-                summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                          simple_value=fun_time/BATCH_SIZE)
-                for fun_name, fun_time in LAST_TIMED.items()
-            ]
-            summary = summary_pb2.Summary(value=summary_values)
-            train_writer.add_summary(summary, global_samples)
+        # if global_batch % 50 == 0:
+        summary_values = [
+            summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
+                                      simple_value=fun_time/BATCH_SIZE)
+            for fun_name, fun_time in LAST_TIMED.items()
+        ]
+        summary = summary_pb2.Summary(value=summary_values)
+        # train_writer.add_summary(summary, global_samples)
 
         global_samples += BATCH_SIZE
+        
         sys.stdout.flush()
-    saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
+    # saver.save(sess._sess._sess._sess._sess, MODEL_PREFIX, global_step=global_samples)
 
 
 if __name__ == "__main__":
