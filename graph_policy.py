@@ -1,95 +1,49 @@
-# coding: utf-8
-import functools
-from functools import wraps
 import tensorflow as tf
-import numpy as np
-from cnf import get_random_kcnfs
-import datetime
-import time
-from tensorflow.core.framework import summary_pb2
-import sys
-import json
-import multiprocessing
-import os
-from deepsense import neptune
 
-# HYPER PARAMETERES ------------------------------------------
-
-# Data properties
-VARIABLE_NUM = 8
-CLAUSE_SIZE = 3
-CLAUSE_NUM = 40
-MIN_CLAUSE_NUM = 1
-
-# Neural net
-EMBEDDING_SIZE = 128
-LEVEL_NUMBER = 10
-
-POS_NEG_ACTIVATION = None
-HIDDEN_LAYERS = [128, 128]
-HIDDEN_ACTIVATION = tf.nn.relu
-EMBED_ACTIVATION = None
-
-LEARNING_RATE = 0.001
-
-POLICY_LOSS_WEIGHT = 1
-SAT_LOSS_WEIGHT = 1
-BATCH_SIZE = 64
-
-NEPTUNE_ENABLED = False
-BOARD_WRITE_GRAPH = True
-
-# Size of dataset
-
-SAMPLES = 10 ** 8
-
-# Multiprocessing
-PROCESSOR_NUM = None  # defaults to all processors
-
-# ------------------------------------------
-
-LAST_TIMED = dict()
+from assert_shape import assert_shape
+import train_policy
 
 
-def read_settings(str_settings):
-    settings = json.loads(str_settings)
-    for var_name, value in settings.items():
-        old_value = globals()[var_name]
-        assert type(value) is type(old_value)
-        print("{} = {}  # default is {}".format(var_name, value, old_value))
-        globals()[var_name] = value
+class Settings:
+    # Data properties
+    SR_GENERATOR = False
+    VARIABLE_NUM = 8
+    MIN_VARIABLE_NUM = 8
+    CLAUSE_SIZE = 3
+    CLAUSE_NUM = 40
+    MIN_CLAUSE_NUM = 1
+
+    # Neural net
+    EMBEDDING_SIZE = 128
+    LEVEL_NUMBER = 10
+
+    POS_NEG_ACTIVATION = None
+    HIDDEN_LAYERS = [128, 128]
+    HIDDEN_ACTIVATION = tf.nn.relu
+    EMBED_ACTIVATION = None
+
+    LEARNING_RATE = 0.001
+
+    POLICY_LOSS_WEIGHT = 1
+    SAT_LOSS_WEIGHT = 1
+    BATCH_SIZE = 64
+
+    NEPTUNE_ENABLED = False
+    BOARD_WRITE_GRAPH = True
+
+    # Size of dataset
+
+    SAMPLES = 10 ** 8
+
+    # Multiprocessing
+    PROCESSOR_NUM = None  # defaults to all processors
 
 
-def set_flags():
-    for arg in sys.argv[1:]:
-        key = '--params='
-        if not arg.startswith(key):
-            continue
-        str_settings = arg[len(key):]
-        read_settings(str_settings)
-
-    environ_settings = os.environ.get('DEEPSAT_PARAMS', '{}')
-    read_settings(environ_settings)
-
-
-def timed(func):
-    @wraps(func)
-    def new_func(*args, **kwargs):
-        start = time.time()
-        results = func(*args, **kwargs)
-        end = time.time()
-        LAST_TIMED[func.__name__] = end - start
-        return results
-    return new_func
-
-
-def assert_shape(matrix, shape: list):
-    act_shape = matrix.get_shape().as_list()
-    assert act_shape == shape, "got shape {}, expected {}".format(act_shape, shape)
+DEFAULT_SETTINGS = Settings.__dict__.copy()
 
 
 class Graph:
-    def __init__(self):
+    def __init__(self, settings):
         BATCH_SIZE = None
         self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
         self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
@@ -113,6 +67,15 @@ class Graph:
         reuse = tf.AUTO_REUSE
 
         self.loss = 0.0
+
+        EMBEDDING_SIZE = settings["EMBEDDING_SIZE"]
+        HIDDEN_LAYERS = settings["HIDDEN_LAYERS"]
+        HIDDEN_ACTIVATION = settings["HIDDEN_ACTIVATION"]
+        SAT_LOSS_WEIGHT = settings["SAT_LOSS_WEIGHT"]
+        POLICY_LOSS_WEIGHT = settings["POLICY_LOSS_WEIGHT"]
+        LEVEL_NUMBER = settings["LEVEL_NUMBER"]
+        EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
+        POS_NEG_ACTIVATION = settings["POS_NEG_ACTIVATION"]
 
         for level in range(LEVEL_NUMBER+1):
             if level == 0:
@@ -236,179 +199,8 @@ class Graph:
                           tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
-def set_and_sat(triple):
-    cnf, is_satisfiable, literal = triple
-    if not is_satisfiable or not abs(literal) in cnf.vars:
-        return False
-    cnf = cnf.set_var(literal)
-    return cnf.satisfiable()
-
-
-def satisfiable(cnf):
-    return cnf.satisfiable()
-
-
-def clauses_to_matrix(clauses, max_clause_num=None, max_variable_num=None):
-    if max_clause_num is None:
-        max_clause_num = CLAUSE_NUM
-    if max_variable_num is None:
-        max_variable_num = VARIABLE_NUM
-    def var_in_clause_val(var, i):
-        if i >= len(clauses):
-            return [0.0, 0.0]
-        return [1.0 if var in clauses[i] else 0.0,
-                1.0 if -var in clauses[i] else 0.0]
-    result = [[var_in_clause_val(var, i) for i in range(max_clause_num)]
-              for var in range(1, max_variable_num+1)]
-    return result
-
-
-@timed
-def gen_labels(pool, cnfs):
-    sat_labels = pool.map(satisfiable, cnfs)
-
-    sats_to_check = [(cnf, is_satisfiable, literal)
-                     for (cnf, is_satisfiable) in zip(cnfs, sat_labels)
-                     for v in range(1, VARIABLE_NUM + 1)
-                     for literal in [v, -v]]
-    policy_labels = np.asarray(pool.map(set_and_sat, sats_to_check))
-    policy_labels = np.asarray(policy_labels).reshape(len(cnfs), VARIABLE_NUM, 2)
-    assert len(cnfs) == len(sat_labels) == policy_labels.shape[0]
-    assert policy_labels.shape[1] == VARIABLE_NUM
-    assert policy_labels.shape[2] == 2
-
-    return sat_labels, policy_labels
-
-
-@timed
-def gen_cnfs_with_labels(pool):
-    cnfs = get_random_kcnfs(BATCH_SIZE, CLAUSE_SIZE, VARIABLE_NUM, CLAUSE_NUM,
-                            min_clause_number=MIN_CLAUSE_NUM)
-    sat_labels, policy_labels = gen_labels(pool, cnfs)
-    return cnfs, sat_labels, policy_labels
-
-
 def main():
-    set_flags()
-
-    if NEPTUNE_ENABLED:
-        context = neptune.Context()
-        context.integrate_with_tensorflow()
-
-    print("cpu number:", multiprocessing.cpu_count())
-
-    tf.reset_default_graph()
-    model = Graph()
-
-    print()
-    print("PARAMETERS")
-    total_parameters = 0
-    for variable in tf.trainable_variables():
-        # shape is an array of tf.Dimension
-        shape = variable.get_shape()
-        print(shape)
-        print(len(shape))
-        variable_parameters = 1
-        for dim in shape:
-            print(dim)
-            variable_parameters *= dim.value
-        print(variable_parameters)
-        total_parameters += variable_parameters
-    print("TOTAL PARAMS:", total_parameters)
-
-    np.set_printoptions(precision=2, suppress=True)
-
-    merged_summaries = tf.summary.merge_all()
-
-    SUMMARY_DIR = "summaries"
-    MODEL_DIR = "models"
-    MODEL_NAME = "activepolicy"
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    os.makedirs(SUMMARY_DIR, exist_ok=True)
-
-    DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
-    SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
-    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
-    train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
-
-    with open(__file__, "r") as fil:
-        # ending tag is broken, because we print ourselves!
-        run_with = "# Program was run via:\n# {}".format(" ".join(sys.argv))
-        value = "<pre>\n" + run_with + "\n" + fil.read() + "\n<" + "/pre>"
-    text_tensor = tf.make_tensor_proto(value, dtype=tf.string)
-    meta = tf.SummaryMetadata()
-    meta.plugin_data.plugin_name = "text"
-    summary = tf.Summary()
-    summary.value.add(tag="code", metadata=meta, tensor=text_tensor)
-    train_writer.add_summary(summary)
-
-    with tf.Session() as sess, multiprocessing.Pool(PROCESSOR_NUM) as pool:
-        if BOARD_WRITE_GRAPH:
-            train_writer.add_graph(sess.graph)
-
-        train_op = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(model.loss)
-        sess.run(tf.global_variables_initializer())
-
-        @timed
-        def nn_train(cnfs, sat_labels, policy_labels):
-            inputs = np.asarray([clauses_to_matrix(cnf.clauses) for cnf in cnfs])
-            summary, _, loss, probs = sess.run(
-                [merged_summaries, train_op, model.loss,
-                 model.policy_probabilities], feed_dict={
-                    model.inputs: inputs,
-                    model.policy_labels: policy_labels,
-                    model.sat_labels: sat_labels,
-                })
-            train_writer.add_summary(summary, global_samples)
-
-        @timed
-        def complete_step():
-            cnfs, sat_labels, policy_labels = gen_cnfs_with_labels(pool)
-            nn_train(cnfs, sat_labels, policy_labels)
-
-        saver = tf.train.Saver()
-
-        global_samples = 0
-        start_time = time.time()
-        print_step = 1
-        print_step_multiply = 2
-        steps_number = int(SAMPLES/BATCH_SIZE) + 1
-        for global_batch in range(steps_number):
-            if global_batch % int(steps_number / 1000) == 0 or global_batch == print_step:
-                if global_batch == print_step:
-                    print_step *= print_step_multiply
-                saver.save(sess, MODEL_PREFIX, global_step=global_samples)
-                now_time = time.time()
-                time_elapsed = now_time - start_time
-                if global_batch == 0:
-                    time_remaining = "unknown"
-                    time_total = "unknown"
-                else:
-                    time_remaining = (time_elapsed / global_batch)\
-                                     * (steps_number - global_batch)
-                    time_total = time_remaining + time_elapsed
-                print("Step {}, {}%\n"
-                      "\tsteps left: {}\n"
-                      "\ttime: {} s\n"
-                      "\test remaining: {} s\n"
-                      "\test total: {} s".format(
-                    global_batch, round(100.*global_batch/steps_number, 1),
-                    steps_number-global_batch, time_elapsed, time_remaining,
-                    time_total))
-
-            complete_step()
-
-            summary_values = [
-                summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                          simple_value=fun_time/BATCH_SIZE)
-                for fun_name, fun_time in LAST_TIMED.items()
-            ]
-            summary = summary_pb2.Summary(value=summary_values)
-            train_writer.add_summary(summary, global_samples)
-
-            global_samples += BATCH_SIZE
-        saver.save(sess, MODEL_PREFIX, global_step=global_samples)
+    train_policy.train_policy(Graph, DEFAULT_SETTINGS, representation='sequence')
 
 
 if __name__ == "__main__":

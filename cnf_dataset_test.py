@@ -24,6 +24,20 @@ class OnlineDatasetCase(unittest.TestCase):
         self.assertEqual(np.asarray(sat_labels_vals).shape, (options["BATCH_SIZE"],))
         self.assertEqual(np.asarray(policy_labels_vals).shape, (options["BATCH_SIZE"], options["VARIABLE_NUM"], 2))
 
+    def test_pad_and_concat_(self):
+        input = [(1, -2, -4, -3, 1), (-1, 2, -3)]
+        out, _ = cnf_dataset.pad_and_concat_(input)
+
+    def test_pad_and_concat(self):
+        input = [
+                 [(1, -2, -4, -3, 1), (-1, 2, -3)],
+                 [(4, 3, 1), (3, -2, 1, -4), (-4, -1, -2, -3), (3, -1, 2, -4)],
+                 [(3, 2, -1, 4)],
+        ]
+        out, lengths = cnf_dataset.pad_and_concat(input)
+        self.assertEqual(out.shape, (3, 4, 5))
+        self.assertEqual(tuple(lengths), (2, 4, 1))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -39,6 +39,7 @@ def get_sat_SR(min_variable_number, max_variable_number, clause_number):
         clauses = clauses[:-1]
     return CNF(clauses)
 
+
 def get_pos_SR(min_variable_number, max_variable_number, clause_number):
     variable_number = random.randint(min_variable_number, max_variable_number)
     clauses = []
