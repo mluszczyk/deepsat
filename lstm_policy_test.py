@@ -11,7 +11,8 @@ class TestGraphPolicy(tf.test.TestCase):
         lstm_policy.main()
 
     @tf.test.mock.patch.dict(lstm_policy.DEFAULT_SETTINGS, {"NEPTUNE_ENABLED": False,
-                                                             "SAMPLES": 64,
-                                                             "SR_GENERATOR": True})
+                                                            "SAMPLES": 64,
+                                                            "SR_GENERATOR": True,
+                                                            "CLAUSE_SIZE": 8})
     def test_train_sr(self):
         lstm_policy.main()

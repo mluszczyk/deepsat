@@ -26,7 +26,7 @@ class OnlineDatasetCase(unittest.TestCase):
 
     def test_pad_and_concat_(self):
         input = [(1, -2, -4, -3, 1), (-1, 2, -3)]
-        out, _ = cnf_dataset.pad_and_concat_(input)
+        out, _ = cnf_dataset.pad_and_concat_(input, 5)
 
     def test_pad_and_concat(self):
         input = [
@@ -34,7 +34,7 @@ class OnlineDatasetCase(unittest.TestCase):
                  [(4, 3, 1), (3, -2, 1, -4), (-4, -1, -2, -3), (3, -1, 2, -4)],
                  [(3, 2, -1, 4)],
         ]
-        out, lengths = cnf_dataset.pad_and_concat(input)
+        out, lengths = cnf_dataset.pad_and_concat(input, 5)
         self.assertEqual(out.shape, (3, 4, 5))
         self.assertEqual(tuple(lengths), (2, 4, 1))
 

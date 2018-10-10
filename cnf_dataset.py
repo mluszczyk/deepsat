@@ -56,7 +56,8 @@ class PoolDatasetGenerator:
             return GraphSampleWithLabels(inputs=inputs, sat_labels=sat_labels, policy_labels=policy_labels)
         elif representation == 'sequence':
             print([cnf.clauses for cnf in cnfs])
-            inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs])
+            inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs],
+                                             clause_size=self.options['CLAUSE_SIZE'])
             return SequenceSampleWithLabels(inputs=inputs, lengths=lengths, sat_labels=sat_labels, policy_labels=policy_labels)
         assert False
 
@@ -85,22 +86,25 @@ def clauses_to_matrix(clauses, max_clause_num, max_variable_num):
     return result
 
 
-def pad_and_concat_(sequences):
+def pad_and_concat_(sequences, pad_to):
     print(sequences)
     arrays = [np.asarray(seq, dtype=np.int32) for seq in sequences]
     lengths = np.asarray([array.shape[0] for array in arrays], dtype=np.int32)
     maxlen = np.max(lengths)
-    arrays = [np.pad(array, [(0, maxlen - array.shape[0])], 'constant', constant_values=0) for array in arrays]
+    assert maxlen <= pad_to
+    arrays = [np.pad(array, [(0, pad_to - array.shape[0])], 'constant', constant_values=0) for array in arrays]
     return np.asarray(arrays), lengths
 
 
-def pad_and_concat(sequences):  # sequences shape: [batch_size, len, dims...] -> ([batch_size, maxlen, dims...], [len])
-    arrays = [pad_and_concat_(seq)[0] for seq in sequences]
+def pad_and_concat(sequences, clause_size):
+    arrays = [pad_and_concat_(seq, clause_size)[0] for seq in sequences]
     lengths = np.asarray([array.shape[0] for array in arrays], dtype=np.int32)
     widths = np.asarray([array.shape[1] for array in arrays], dtype=np.int32)
     maxlen = np.max(lengths)
     maxwidth = np.max(widths)
-    arrays = [np.pad(array, [(0, maxlen - array.shape[0]), (0, maxwidth - array.shape[1])], 'constant', constant_values=0) for array in arrays]
+    arrays = [np.pad(array, [(0, maxlen - array.shape[0]), (0, maxwidth - array.shape[1])],
+                     'constant', constant_values=0)
+              for array in arrays]
     print(arrays)
     return np.asarray(arrays), lengths
 

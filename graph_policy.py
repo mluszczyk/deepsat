@@ -200,7 +200,7 @@ class Graph:
 
 
 def main():
-    train_policy.train_policy(Graph, DEFAULT_SETTINGS, representation='sequence')
+    train_policy.train_policy(Graph, DEFAULT_SETTINGS, representation='graph')
 
 
 if __name__ == "__main__":

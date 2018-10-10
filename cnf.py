@@ -52,7 +52,12 @@ def get_pos_SR(min_variable_number, max_variable_number, clause_number):
 
 
 def get_SR(variable_number):
-    # As authors stated, 2 + Bernoulli(0.3) + Geo(0.4). This has actually E[k] = 4.8
+    """Generate a single clause. variable_number is the maximum number of available
+    variables. For consistency with NeuroSAT, the number of literals in the clause
+    is:
+    k = 2 + Bernoulli(0.3) + Geo(0.4).
+    E[k] = 4.8
+    """
     k = 2 + numpy.random.binomial(1, 0.3) + numpy.random.geometric(0.4)
     if k > variable_number:
         k = variable_number
