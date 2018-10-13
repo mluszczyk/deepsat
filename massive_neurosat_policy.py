@@ -32,17 +32,17 @@ is_chief = my_task_index == 0
 # HYPERPARAMETERS ------------------------------------------
 
 # Data properties
-VARIABLE_NUM = 100
-MIN_VARIABLE_NUM = 100
+VARIABLE_NUM = 30
+MIN_VARIABLE_NUM = 30
 CLAUSE_SIZE = 3
-CLAUSE_NUM = 1200
+CLAUSE_NUM = 400
 MIN_CLAUSE_NUM = 1
 
 SR_GENERATOR = True
 
 # Neural net
 EMBEDDING_SIZE = 128
-LEVEL_NUMBER = 50
+LEVEL_NUMBER = 30
 
 POS_NEG_ACTIVATION = None
 HIDDEN_LAYERS = [128, 128]
@@ -63,7 +63,12 @@ BOARD_WRITE_GRAPH = True
 # META_FILE = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-18-10-07-021646/model-116096.meta"
 # META_DIR = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-restorer/"
 RESTORE = True
-DATESAVE = "18-10-09-041459"
+# Test case
+# DATESAVE = "18-10-09-041459"
+# Started with 266 - good for var-100-lev-50
+DATESAVE = "18-10-09-052043"
+# good for var-50-lev-30
+# DATESAVE = "18-10-09-215204"
 # META_DIR = "/net/archive/groups/plggluna/henryk/sat_solving/deepsat/models/neuropol-restorer-18-10-09-041459-var-100-lev-50"
 
 # Size of dataset
