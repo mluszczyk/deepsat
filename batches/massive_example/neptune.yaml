@@ -1,0 +1,15 @@
+project: deepsense-ai-audi/Carla-RL
+name: ppo2
+tags: [ppo2]
+exclude:
+    - core.*
+    - core
+    - slurm-*.out
+    - .git
+    - .neptune_tokens
+    - carla_logs
+    - exp/logs
+    - carla_with_wolfsburg
+    - output
+    - .neptune_tokens
+
