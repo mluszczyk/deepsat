@@ -20,7 +20,7 @@ import os.path
 import datetime
 import subprocess
 
-PROJ_DIR = os.path.expandvars("$SCRATCH/deepsat/")
+PROJ_DIR = "/net/archive/groups/plggluna/deepsat"
 
 SERIES_NAME = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
 
