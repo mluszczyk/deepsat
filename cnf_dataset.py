@@ -55,7 +55,6 @@ class PoolDatasetGenerator:
             inputs = np.asarray([clauses_to_matrix(cnf.clauses, self.options['CLAUSE_NUM'], self.options['VARIABLE_NUM']) for cnf in cnfs])
             return GraphSampleWithLabels(inputs=inputs, sat_labels=sat_labels, policy_labels=policy_labels)
         elif representation == 'sequence':
-            print([cnf.clauses for cnf in cnfs])
             inputs, lengths = pad_and_concat([cnf.clauses for cnf in cnfs],
                                              clause_size=self.options['CLAUSE_SIZE'])
             return SequenceSampleWithLabels(inputs=inputs, lengths=lengths, sat_labels=sat_labels, policy_labels=policy_labels)
@@ -87,7 +86,6 @@ def clauses_to_matrix(clauses, max_clause_num, max_variable_num):
 
 
 def pad_and_concat_(sequences, pad_to):
-    print(sequences)
     arrays = [np.asarray(seq, dtype=np.int32) for seq in sequences]
     lengths = np.asarray([array.shape[0] for array in arrays], dtype=np.int32)
     maxlen = np.max(lengths)
@@ -105,7 +103,6 @@ def pad_and_concat(sequences, clause_size):
     arrays = [np.pad(array, [(0, maxlen - array.shape[0]), (0, maxwidth - array.shape[1])],
                      'constant', constant_values=0)
               for array in arrays]
-    print(arrays)
     return np.asarray(arrays), lengths
 
 
