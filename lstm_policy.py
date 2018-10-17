@@ -39,6 +39,8 @@ class Settings:
     BOARD_WRITE_GRAPH = False
     SR_GENERATOR = False
 
+    NEPTUNE_ENABLED = False
+
 
 DEFAULT_SETTINGS = Settings.__dict__.copy()
 
