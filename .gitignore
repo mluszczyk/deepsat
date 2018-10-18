@@ -2,6 +2,5 @@
 __pycache__
 /.idea
 /summaries/
-/models/
 /.neptune_setup.sh
 /neptune.log
