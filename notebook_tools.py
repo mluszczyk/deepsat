@@ -30,7 +30,8 @@ def default_experiments(meta_dir, expected_variable_num):
     sess = tf.Session()
     graph_env = load_graph_env(sess, meta_dir, expected_variable_num)
     test_graph(graph_env)
-    return execute_experiments(graph_env, experiments)
+    lstm_dpll_cls = make_lstm_dpll_class(graph_env)
+    return execute_experiments(experiments, [lstm_dpll_cls])
 
 
 def load_graph_env(sess, meta_dir, expected_variable_num):
@@ -157,7 +158,7 @@ def compute_and_print_steps(sats, dpll_cls):
     return stats
 
 
-def print_all(s, k, n, m, all_stats, graph_env):
+def print_all(s, k, n, m, all_stats, dpll_classes):
     global S, K, N, M
     S = s
     K = k
@@ -173,18 +174,17 @@ def print_all(s, k, n, m, all_stats, graph_env):
         if DPLL().run(sat) is not None:
             sats.append(sat)
     assert len(sats) == S
-    lstm_dpll_cls = make_lstm_dpll_class(graph_env)
-    for dpll_cls in [DPLL, RandomVarDPLL, RandomClauseDPLL, lstm_dpll_cls, MostCommonVarDPLL]:
+    for dpll_cls in [DPLL, RandomVarDPLL, RandomClauseDPLL, MostCommonVarDPLL] + dpll_classes:
         stats = compute_and_print_steps(sats, dpll_cls)
         stats.update({"dpll_type": dpll_cls.__name__, "s": S, "k": k, "n": n, "m": m})
         all_stats.append(stats)
 
 
-def execute_experiments(graph_env, experiments):
+def execute_experiments(experiments, dpll_classes):
     all_stats = []
     for experiment in experiments:
         print("S: {} K: {} N: {} M: {}".format(*experiment))
-        print_all(*experiment, all_stats, graph_env)
+        print_all(*experiment, all_stats, dpll_classes)
     return all_stats
 
 
