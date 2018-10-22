@@ -8,6 +8,14 @@ class TestGraphPolicy(tf.test.TestCase):
                                                             "SAMPLES": 64})
     def test_train_not_sr(self):
         self.assertFalse(lstm_policy.DEFAULT_SETTINGS["SR_GENERATOR"])
+        self.assertEqual(lstm_policy.DEFAULT_SETTINGS["CLAUSE_AGGREGATION"], "LSTM")
+        lstm_policy.main()
+
+    @tf.test.mock.patch.dict(lstm_policy.DEFAULT_SETTINGS, {"NEPTUNE_ENABLED": False,
+                                                            "SAMPLES": 64,
+                                                            "CLAUSE_AGGREGATION": "BOW"})
+    def test_train_not_sr_bow(self):
+        self.assertFalse(lstm_policy.DEFAULT_SETTINGS["SR_GENERATOR"])
         lstm_policy.main()
 
     @tf.test.mock.patch.dict(lstm_policy.DEFAULT_SETTINGS, {"NEPTUNE_ENABLED": False,

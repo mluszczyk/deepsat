@@ -17,6 +17,8 @@ class Settings:
     EMBEDDING_SIZE = 64
     LSTM_STATE_SIZE = 64
     LSTM_LAYERS = 1
+    CLAUSE_HIDDEN_SIZES = []
+    FORMULA_HIDDEN_SIZES = []
 
     SAT_HIDDEN_LAYERS = 0
     SAT_HIDDEN_LAYER_SIZE = 64
@@ -41,8 +43,20 @@ class Settings:
 
     NEPTUNE_ENABLED = False
 
+    CLAUSE_AGGREGATION = "LSTM"  # "BOW" is the other option
+
+    PRE_BOW_SIZE = None
+    POST_BOW_SIZE = None
+
 
 DEFAULT_SETTINGS = Settings.__dict__.copy()
+
+
+def sequence_mean(tensor, lengths):
+    masked = (tf.expand_dims(tf.sequence_mask(lengths, tf.shape(tensor)[1], dtype=tf.float32), 2) *
+           tensor)
+    aggregated = tf.reduce_sum(masked, axis=1) / tf.expand_dims(tf.cast(lengths, dtype=tf.float32), 1)
+    return aggregated
 
 
 class Graph:
@@ -82,39 +96,61 @@ class Graph:
         PREEMBEDDING_SIZE = EMBEDDING_SIZE * CLAUSE_SIZE + CLAUSE_SIZE
         assert_shape(clause_preembeddings,
                      [BATCH_SIZE, None, PREEMBEDDING_SIZE])
-        
-        clause_w = tf.Variable(tf.random_normal(
-            [PREEMBEDDING_SIZE, EMBEDDING_SIZE]), name='clause_w')
-        clause_b = tf.Variable(tf.random_normal([EMBEDDING_SIZE]), name='clause_b')
-        clause_embeddings = tf.reshape(tf.sigmoid(
-            tf.reshape(clause_preembeddings, [-1, PREEMBEDDING_SIZE]) @ clause_w + clause_b), 
-                                       [BATCH_SIZE, -1, EMBEDDING_SIZE])
+
+        clause_batch = tf.reshape(clause_preembeddings, [-1, PREEMBEDDING_SIZE])
+
+        sizes = [PREEMBEDDING_SIZE] + settings["CLAUSE_HIDDEN_SIZES"] + [EMBEDDING_SIZE]
+        for num, (prev_size, next_size) in enumerate(zip(sizes[:-1], sizes[1:])):
+            clause_w = tf.Variable(tf.random_normal([prev_size, next_size]), name='clause_w_{}'.format(num))
+            clause_b = tf.Variable(tf.zeros([next_size]), name='clause_b_{}'.format(num))
+            clause_batch = tf.nn.leaky_relu(clause_batch @ clause_w + clause_b, alpha=0.1)
+            if num < len(sizes) - 2:
+                clause_batch = tf.layers.batch_normalization(clause_batch)
+        clause_embeddings = tf.reshape(clause_batch, [BATCH_SIZE, -1, EMBEDDING_SIZE])
         # shape: [None, None, EMBEDDING_SIZE]
-        
-        lstm = tf.nn.rnn_cell.MultiRNNCell(
-            [tf.contrib.rnn.LSTMCell(LSTM_STATE_SIZE)
-             for i in range(LSTM_LAYERS)])
-        
-        _, lstm_final_states = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32,
-                                                 sequence_length=self.lengths
-                                               )
-        formula_embedding = lstm_final_states[-1].h
+
+        if settings["CLAUSE_AGGREGATION"] == "LSTM":
+            lstm = tf.nn.rnn_cell.MultiRNNCell(
+                [tf.contrib.rnn.LSTMCell(LSTM_STATE_SIZE)
+                 for i in range(LSTM_LAYERS)])
+
+            _, lstm_final_states = tf.nn.dynamic_rnn(lstm, clause_embeddings, dtype=tf.float32,
+                                                     sequence_length=self.lengths
+                                                   )
+            formula_embedding = lstm_final_states[-1].h
+        elif settings["CLAUSE_AGGREGATION"] == "BOW":
+            bow = sequence_mean(clause_embeddings, self.lengths)
+
+            sizes = [EMBEDDING_SIZE] + settings["FORMULA_HIDDEN_SIZES"] + [LSTM_STATE_SIZE]
+            signal = bow
+            for num, (prev_size, next_size) in enumerate(zip(sizes[:-1], sizes[1:])):
+                post_bow_w = tf.Variable(tf.random_normal([prev_size, next_size]), name="post_bow_w_{}".format(num))
+                post_bow_b = tf.Variable(tf.zeros([next_size], name="post_bow_b_{}".format(num)))
+
+                signal = tf.nn.leaky_relu(signal @ post_bow_w + post_bow_b, alpha=0.1)
+                if num < len(sizes) - 2:
+                    signal = tf.layers.batch_normalization(signal)
+            formula_embedding = signal
+        else:
+            assert False
             
         assert_shape(formula_embedding, [BATCH_SIZE, LSTM_STATE_SIZE])
 
         last_policy_layer = formula_embedding
         for num in range(POLICY_HIDDEN_LAYERS):
             last_policy_layer = tf.layers.dense(
-                last_policy_layer, POLICY_HIDDEN_LAYER_SIZE, tf.nn.relu,
+                last_policy_layer, POLICY_HIDDEN_LAYER_SIZE,
                 name='policy_hidden_{}'.format(num + 1))
+            last_policy_layer = tf.nn.leaky_relu(last_policy_layer, alpha=0.1)
         self.policy_logits = tf.layers.dense(
             last_policy_layer, VARIABLE_NUM*2, name='policy')
 
         last_sat_layer = formula_embedding
         for num in range(POLICY_HIDDEN_LAYERS):
             last_sat_layer = tf.layers.dense(
-                last_sat_layer, SAT_HIDDEN_LAYER_SIZE, tf.nn.relu,
+                last_sat_layer, SAT_HIDDEN_LAYER_SIZE,
                 name='sat_hidden_{}'.format(num + 1))
+            last_sat_layer = tf.nn.leaky_relu(last_sat_layer, alpha=0.1)
         self.sat_logits = tf.squeeze(
             tf.layers.dense(last_sat_layer, 1, name='sat'), axis=1)
         

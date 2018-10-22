@@ -37,14 +37,14 @@ def run_process(exp_name, mode, opts):
 
 
 def main():
-    MODE = "neurosat"
-    SR_GENERATOR = True
-    VARIABLE_NUM = 4
+    MODE = "lstm"
+    CLAUSE_AGGREGATION = "BOW"
+    SR_GENERATOR = False
+    VARIABLE_NUM = 8
     NEPTUNE_ENABLED = True
 
     LEARNING_RATE = 0.001
     BOARD_WRITE_GRAPH = False
-
 
     if MODE == "lstm":
         EMBEDDING_SIZE = 256
@@ -53,6 +53,11 @@ def main():
         POLICY_HIDDEN_LAYERS = 1
         SAT_HIDDEN_LAYERS = 1
         LSTM_LAYERS = 1
+
+        if CLAUSE_AGGREGATION == "BOW":
+            CLAUSE_HIDDEN_SIZES = [256, 256]
+            FORMULA_HIDDEN_SIZES = [256, 256]
+            LSTM_STATE_SIZE = 256
 
     elif MODE == "neurosat":
         MIN_VARIABLE_NUM = VARIABLE_NUM
@@ -83,8 +88,11 @@ def main():
             "SAT_HIDDEN_LAYERS",
             "SAT_HIDDEN_LAYER_SIZE",
             "LSTM_LAYERS",
-            "LSTM_STATE_SIZE"
+            "LSTM_STATE_SIZE",
+            "CLAUSE_AGGREGATION"
         ]
+        if CLAUSE_AGGREGATION == "BOW":
+            opts += ["CLAUSE_HIDDEN_SIZES", "FORMULA_HIDDEN_SIZES"]
     elif MODE == "neurosat":
         opts += [
             "MIN_VARIABLE_NUM"
@@ -95,7 +103,7 @@ def main():
     CLAUSE_NUM = VARIABLE_NUM * 5
 
     if MODE == "lstm":
-        SAMPLES = 4 * VARIABLE_NUM * 10 ** 6
+        SAMPLES = 4 * VARIABLE_NUM * 10 ** 6 * 10
         POLICY_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
         SAT_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
     elif MODE == "neurosat":
