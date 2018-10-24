@@ -4,7 +4,6 @@ from random import randint, choice
 
 import numpy
 import numpy.random
-import pycosat
 from pysat.solvers import Glucose3
 from pysat.solvers import Minisat22
 

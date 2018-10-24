@@ -4,6 +4,6 @@ sympy
 sklearn
 scipy  # implicitly reqiuired by sklearn
 matplotlib
-pandas<=0.22  # for compatibility with neptune-cli, which requires python-datetime==
-pycosat
-neptune-cli==1.6.3
+pandas
+neptune-cli
+python-sat
