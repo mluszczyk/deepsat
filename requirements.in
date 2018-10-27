@@ -2,7 +2,7 @@ jupyterlab
 tensorflow
 sympy
 sklearn
-scipy  # implicitly reqiuired by sklearn
+scipy  # implicitly required by sklearn
 matplotlib
 pandas
 neptune-cli
