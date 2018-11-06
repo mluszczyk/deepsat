@@ -2,7 +2,7 @@ set -xe
 
 INSTANCE="$1"
 
-ssh $INSTANCE "sudo apt-get -y install rsync python3-venv gcc python3-dev tmux less g++ make patch"
+ssh $INSTANCE "sudo apt-get -y install rsync python3-venv gcc python3-dev tmux less g++ make patch zlib1g-dev"
 ssh $INSTANCE "mkdir -p deepsat/"
 
 bash remote/rsync.sh $INSTANCE
