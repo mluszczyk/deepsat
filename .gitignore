@@ -4,3 +4,5 @@ __pycache__
 /summaries/
 /.neptune_setup.sh
 /neptune.log
+/credentials.json
+/token.json

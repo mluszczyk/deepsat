@@ -13,11 +13,16 @@ from collections import namedtuple
 GraphEnv = namedtuple(
     "GraphEnv",
     ["sess", "batch_size", "clause_size",
-     "g_policy_probs", "g_inputs", "g_lengths", "g_sat_probs"])
+     "g_policy_probs", "g_inputs", "g_lengths", "g_sat_probs", "expected_variable_num"])
 
 
 def default_experiments(meta_dir, expected_variable_num):
     np.set_printoptions(precision=3, suppress=True)
+
+    sess = tf.Session()
+    graph_env = load_graph_env(sess, meta_dir, expected_variable_num)
+
+    expected_variable_num = graph_env.expected_variable_num
 
     experiments = [
         (100, 2, 2, 3),
@@ -27,8 +32,6 @@ def default_experiments(meta_dir, expected_variable_num):
         experiments += [(100, 3, var_num, var_num * 5),
                         (100, 3, var_num, var_num * 10)]
 
-    sess = tf.Session()
-    graph_env = load_graph_env(sess, meta_dir, expected_variable_num)
     test_graph(graph_env)
     lstm_dpll_cls = make_lstm_dpll_class(graph_env)
     return execute_experiments(experiments, [lstm_dpll_cls])
@@ -56,7 +59,8 @@ def load_graph_env(sess, meta_dir, expected_variable_num):
     g_policy_probs = graph.get_tensor_by_name('policy_prob:0')
     g_sat_probs = graph.get_tensor_by_name('sat_prob:0')
 
-    assert g_policy_probs.shape[1] == 2 * expected_variable_num
+    if expected_variable_num is not None:
+        assert g_policy_probs.shape[1] == 2 * expected_variable_num
 
     return GraphEnv(sess=sess,
                     batch_size=batch_size,
@@ -64,7 +68,8 @@ def load_graph_env(sess, meta_dir, expected_variable_num):
                     g_policy_probs=g_policy_probs,
                     g_inputs=g_inputs,
                     g_lengths=g_lengths,
-                    g_sat_probs=g_sat_probs)
+                    g_sat_probs=g_sat_probs,
+                    expected_variable_num=g_policy_probs.shape[1] // 2)
 
 
 def test_graph(graph_env):

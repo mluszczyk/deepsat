@@ -12,6 +12,7 @@ from deepsense import neptune
 from tensorflow.core.framework import summary_pb2
 
 import cnf_dataset
+from reports import register_training
 from timed import timed, LAST_TIMED
 
 
@@ -41,9 +42,25 @@ def set_flags(default_settings):
 def train_policy(create_graph_fn, default_settings, representation='graph'):
     settings = set_flags(default_settings)
 
+    SUMMARY_DIR = "summaries"
+    MODEL_DIR = "models"
+    MODEL_NAME = "neuropol"
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(SUMMARY_DIR, exist_ok=True)
+
+    DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
+    SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
+    THIS_MODEL_DIR = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR
+    MODEL_PREFIX = THIS_MODEL_DIR + "/model"
+
     if settings["NEPTUNE_ENABLED"]:
         context = neptune.Context()
         context.integrate_with_tensorflow()
+    else:
+        context = None
+    register_training.register_training(checkpoint_dir=THIS_MODEL_DIR,
+                                        neptune_context=context)
 
     print("cpu number:", multiprocessing.cpu_count())
 
@@ -70,16 +87,6 @@ def train_policy(create_graph_fn, default_settings, representation='graph'):
 
     merged_summaries = tf.summary.merge_all()
 
-    SUMMARY_DIR = "summaries"
-    MODEL_DIR = "models"
-    MODEL_NAME = "neuropol"
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    os.makedirs(SUMMARY_DIR, exist_ok=True)
-
-    DATESTR = datetime.datetime.now().strftime("%y-%m-%d-%H%M%S")
-    SUMMARY_PREFIX = SUMMARY_DIR + "/" + MODEL_NAME + "-" + DATESTR
-    MODEL_PREFIX = MODEL_DIR + "/" + MODEL_NAME + "-" + DATESTR + "/model"
     train_writer = tf.summary.FileWriter(SUMMARY_PREFIX + "-train")
 
     with open(__file__, "r") as fil:

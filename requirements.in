@@ -7,3 +7,6 @@ matplotlib
 pandas
 neptune-cli
 python-sat
+google-api-python-client  # reports
+google-cloud-storage<=1.3  # reports, 1.4 onwards conflicts with the old Neptune
+oauth2client  # reports
