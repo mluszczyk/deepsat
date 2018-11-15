@@ -36,9 +36,9 @@ def run_process(exp_name, mode, opts):
     subprocess.run(["bash", sbatch_path], check=True)
 
 
-def main():
+def get_default_settings(mode, clause_aggregation):
     MODE = "lstm"
-    CLAUSE_AGGREGATION = "BOW"
+    CLAUSE_AGGREGATION = "LSTM"
     SR_GENERATOR = False
     VARIABLE_NUM = 8
     NEPTUNE_ENABLED = True
@@ -53,6 +53,7 @@ def main():
         POLICY_HIDDEN_LAYERS = 1
         SAT_HIDDEN_LAYERS = 1
         LSTM_LAYERS = 1
+        CLAUSE_EMBEDDING_ACTIVATION = "sigmoid"
 
         if CLAUSE_AGGREGATION == "BOW":
             CLAUSE_HIDDEN_SIZES = [256, 256]
@@ -89,7 +90,8 @@ def main():
             "SAT_HIDDEN_LAYER_SIZE",
             "LSTM_LAYERS",
             "LSTM_STATE_SIZE",
-            "CLAUSE_AGGREGATION"
+            "CLAUSE_AGGREGATION",
+            "CLAUSE_EMBEDDING_ACTIVATION"
         ]
         if CLAUSE_AGGREGATION == "BOW":
             opts += ["CLAUSE_HIDDEN_SIZES", "FORMULA_HIDDEN_SIZES"]
@@ -103,7 +105,7 @@ def main():
     CLAUSE_NUM = VARIABLE_NUM * 5
 
     if MODE == "lstm":
-        SAMPLES = 4 * VARIABLE_NUM * 10 ** 6 * 10
+        SAMPLES = 4 * VARIABLE_NUM * 10 ** 6 * 4
         POLICY_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
         SAT_HIDDEN_LAYER_SIZE = 4 * VARIABLE_NUM
     elif MODE == "neurosat":
@@ -111,10 +113,17 @@ def main():
     else:
         assert False
 
-    exp_name = "{}-varnum{}".format(MODE, VARIABLE_NUM)
     locals_ = locals()
     opts = {key: locals_[key] for key in opts}
-    run_process(exp_name, MODE, opts)
+    return opts
+
+
+def main():
+    mode = "lstm"
+    variable_number = 8
+    exp_name = "{}-varnum{}".format(mode, variable_number)
+    opts = get_default_settings(mode, "LSTM")
+    run_process(exp_name, mode, opts)
 
 
 if __name__ == '__main__':

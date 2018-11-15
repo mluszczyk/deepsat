@@ -48,6 +48,8 @@ class Settings:
     PRE_BOW_SIZE = None
     POST_BOW_SIZE = None
 
+    CLAUSE_EMBEDDING_ACTIVATION = "sigmoid"  # or: relu or leaky_relu
+
 
 DEFAULT_SETTINGS = Settings.__dict__.copy()
 
@@ -57,6 +59,18 @@ def sequence_mean(tensor, lengths):
            tensor)
     aggregated = tf.reduce_sum(masked, axis=1) / tf.expand_dims(tf.cast(lengths, dtype=tf.float32), 1)
     return aggregated
+
+
+def get_clause_embedding_activation(settings):
+    if settings["CLAUSE_EMBEDDING_ACTIVATION"] == "sigmoid":
+        return tf.sigmoid
+    elif settings["CLAUSE_EMBEDDING_ACTIVATION"] == "relu":
+        return tf.nn.relu
+    elif settings["CLAUSE_EMBEDDING_ACTIVATION"] == "leaky_relu":
+        return lambda x: tf.nn.leaky_relu(x, alpha=0.1)
+    else:
+        raise Exception("wrong argument to clause embedding activation '{}'".format(
+            settings["CLAUSE_EMBEDDING_ACTIVATION"]))
 
 
 class Graph:
@@ -72,6 +86,8 @@ class Graph:
         SAT_HIDDEN_LAYER_SIZE = settings["SAT_HIDDEN_LAYER_SIZE"]
         SAT_LOSS_WEIGHT = settings["SAT_LOSS_WEIGHT"]
         POLICY_LOSS_WEIGHT = settings["POLICY_LOSS_WEIGHT"]
+
+        clause_embedding_activation = get_clause_embedding_activation(settings)
 
         self.inputs = tf.placeholder(tf.int32, shape=(BATCH_SIZE, None, CLAUSE_SIZE), name='inputs')
         self.lengths = tf.placeholder(tf.int32, shape=(BATCH_SIZE,), name='lengths')
@@ -103,9 +119,12 @@ class Graph:
         for num, (prev_size, next_size) in enumerate(zip(sizes[:-1], sizes[1:])):
             clause_w = tf.Variable(tf.random_normal([prev_size, next_size]), name='clause_w_{}'.format(num))
             clause_b = tf.Variable(tf.zeros([next_size]), name='clause_b_{}'.format(num))
-            clause_batch = tf.nn.leaky_relu(clause_batch @ clause_w + clause_b, alpha=0.1)
+            clause_batch = clause_batch @ clause_w + clause_b
             if num < len(sizes) - 2:
+                clause_batch = tf.nn.leaky_relu(clause_batch, alpha=0.1)
                 clause_batch = tf.layers.batch_normalization(clause_batch)
+            else:
+                clause_batch = clause_embedding_activation(clause_batch)
         clause_embeddings = tf.reshape(clause_batch, [BATCH_SIZE, -1, EMBEDDING_SIZE])
         # shape: [None, None, EMBEDDING_SIZE]
 
