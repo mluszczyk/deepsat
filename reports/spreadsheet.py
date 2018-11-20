@@ -15,6 +15,12 @@ class SpreadsheetException(Exception):
     pass
 
 
+def make_range(sheet, start, end):
+    return "{}!{}{}:{}{}".format(sheet,
+                                 chr(ord('A') + start[1] - 1), start[0],
+                                 chr(ord('A') + end[1] - 1), end[0])
+
+
 class Spreadsheet:
     def __init__(self):
         pass
@@ -52,6 +58,14 @@ class Spreadsheet:
             valueInputOption=SAMPLE_VALUE_INPUT_OPTION,
             body={'values': [items]}
         ).execute()
+
+    def set_cell(self, row_num, col_num, val):
+        sheet = self.get_sheet()
+        result = sheet.values().update(
+            spreadsheetId=SAMPLE_SPREADSHEET_ID,
+            range=make_range("Arkusz1", (row_num + 1, col_num), (row_num + 1, col_num)),
+            valueInputOption=SAMPLE_VALUE_INPUT_OPTION,
+            body={'values': [[val]]}).execute()
 
 
 if __name__ == '__main__':

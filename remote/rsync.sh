@@ -1,2 +1,3 @@
-INSTANCE="$1"
-rsync -rvx --exclude .git --exclude __pycache__ --exclude summaries . $INSTANCE:deepsat/deepsat/
+set -xe
+./remote/lib.sh
+rsync_project

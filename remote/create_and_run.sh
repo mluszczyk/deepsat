@@ -1,3 +1,3 @@
 set -xe
 source remote/lib.sh
-remote_run
+create_and_run
