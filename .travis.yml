@@ -3,3 +3,8 @@ python:
   - "3.5"
   - "3.6"
 script: python -m unittest discover
+matrix:  # https://github.com/travis-ci/travis-ci/issues/9815
+  include:
+    - python: "3.7"
+      dist: xenial
+      sudo: true
