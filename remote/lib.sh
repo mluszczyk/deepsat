@@ -25,12 +25,10 @@ function create_instance {
 
 function remote_run {
     rsync_project
-    ssh $INSTANCE -- "source setup.sh && cd deepsat/deepsat && nohup python run_experiments.py > stdout 2>stderr & tail -f ~/deepsat/deepsat/stdout ~/deepsat/deepsat/stderr"
+    ssh $INSTANCE -- "source setup.sh && cd deepsat/deepsat && cat /dev/null >stdout 2>stderr && nohup python run_experiments.py > stdout 2>stderr & tail -F ~/deepsat/deepsat/stdout ~/deepsat/deepsat/stderr"
 }
 
-function create_and_run {
-    create_instance "$INSTANCE"
-
+function setup_env_for_gcloud {
     # Redefine ssh, scp and rsync. Note: it's better than setting a variable for SSH, RSYNC etc.
     # https://stackoverflow.com/questions/15468689/missing-trailing-in-remote-shell-command
     function ssh {
@@ -42,6 +40,11 @@ function create_and_run {
     function rsync {
         /usr/bin/rsync -e ./remote/gcloud_ssh_replacement.sh "$@"
     }
+}
+
+function create_and_run {
+    create_instance "$INSTANCE"
+    setup_env_for_gcloud
     setup_instance
     remote_run
 }

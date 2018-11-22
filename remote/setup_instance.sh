@@ -1,3 +1,3 @@
 set -xe
-./remote/lib.sh
+source remote/lib.sh
 setup_instance
