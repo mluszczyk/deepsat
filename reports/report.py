@@ -18,7 +18,7 @@ NOTEBOOK_PARAMS = '''{notebook_params}'''
 
 NOTEBOOK_AS_VERSION = 4
 BUCKET_NAME = "neural-guidance-report-html"
-EXECUTE_NOTEBOOKS = False
+EXECUTE_NOTEBOOKS = True
 STORAGE_URL = "https://storage.googleapis.com/neural-guidance-report-html/"
 
 
