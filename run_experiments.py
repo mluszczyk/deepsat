@@ -37,8 +37,8 @@ def run_process(exp_name, mode, opts):
 
 
 def get_default_settings(mode, clause_aggregation):
-    MODE = "lstm"
-    CLAUSE_AGGREGATION = "LSTM"
+    MODE = mode
+    CLAUSE_AGGREGATION = clause_aggregation
     SR_GENERATOR = False
     VARIABLE_NUM = 8
     NEPTUNE_ENABLED = True
