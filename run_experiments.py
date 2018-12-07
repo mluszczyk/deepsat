@@ -118,11 +118,20 @@ def get_default_settings(mode, clause_aggregation):
     return opts
 
 
+def get_massive_policy():
+    opts = get_default_settings("neurosat", None)
+    opts.update({
+        "CLAUSE_NUM": 400,
+        "LEVEL_NUMBER": 30,
+        "BATCH_SIZE": 64,
+    })
+    return opts
+
+
 def main():
-    mode = "lstm"
-    variable_number = 8
-    exp_name = "{}-varnum{}".format(mode, variable_number)
-    opts = get_default_settings(mode, "LSTM")
+    mode = "neurosat"
+    exp_name = "{}".format(mode)
+    opts = get_massive_policy()
     run_process(exp_name, mode, opts)
 
 
