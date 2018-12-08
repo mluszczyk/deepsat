@@ -36,11 +36,11 @@ def run_process(exp_name, mode, opts):
     subprocess.run(["bash", sbatch_path], check=True)
 
 
-def get_default_settings(mode, clause_aggregation):
+def get_default_settings(mode, clause_aggregation, variable_num=8):
     MODE = mode
     CLAUSE_AGGREGATION = clause_aggregation
     SR_GENERATOR = False
-    VARIABLE_NUM = 8
+    VARIABLE_NUM = variable_num
     NEPTUNE_ENABLED = True
 
     LEARNING_RATE = 0.001
@@ -119,11 +119,14 @@ def get_default_settings(mode, clause_aggregation):
 
 
 def get_massive_policy():
-    opts = get_default_settings("neurosat", None)
+    opts = get_default_settings("neurosat", None, variable_num=30)
     opts.update({
         "CLAUSE_NUM": 400,
         "LEVEL_NUMBER": 30,
         "BATCH_SIZE": 64,
+        "SR_GENERATOR": True,
+        "USE_TPU": True,
+        "NEPTUNE_ENABLED": False
     })
     return opts
 

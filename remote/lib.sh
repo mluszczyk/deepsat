@@ -12,15 +12,16 @@ function setup_instance {
 
     scp remote/setup.sh "$INSTANCE:"
 
-    ssh $INSTANCE -- "python3 -m venv deepsat/venv && source setup.sh && pip install -U pip setuptools && pip install -r deepsat/deepsat/requirements.txt"
+    ssh $INSTANCE -- "python3 -m venv deepsat/venv && source setup.sh && pip install -U pip setuptools && pip install -r deepsat/deepsat/requirements.txt && gcloud config set project simulators-of-simulators ; gcloud config set compute/zone us-central1-c"
 }
 
 function create_instance {
     NAME="$1"
     gcloud compute instances create "$1" \
-        --image-family debian-9 \
-        --image-project debian-cloud \
-        --machine-type=n1-standard-16
+      --machine-type=n1-standard-16 \
+      --image-project=ml-images \
+      --image-family=tf-1-12 \
+      --scopes=cloud-platform
 }
 
 function remote_run {

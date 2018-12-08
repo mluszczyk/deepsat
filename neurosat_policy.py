@@ -39,18 +39,32 @@ DEFAULT_SETTINGS = {
     "SAMPLES": 10 ** 8,
 
     # Multiprocessing
-    "PROCESSOR_NUM": None  # defaults to all processors
+    "PROCESSOR_NUM": None,  # defaults to all processors,
+
+    "USE_TPU": False
 }
 
 # ------------------------------------------
 
 
 class Graph:
-    def __init__(self, settings):
+    def __init__(self, settings, features=None, labels=None):
         BATCH_SIZE = None
-        self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
-        self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
-        self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
+        if features is None:
+            self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
+        else:
+            self.inputs = features
+
+        def assert_shape(a, b):
+            del a
+            del b
+
+        if labels is None:
+            self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
+            self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
+        else:
+            self.sat_labels = labels["sat"]
+            self.policy_labels = labels["policy"]
 
         batch_size = tf.shape(self.inputs)[0]
         variable_num = tf.shape(self.inputs)[1]
@@ -79,26 +93,25 @@ class Graph:
         LEVEL_NUMBER = settings["LEVEL_NUMBER"]
         EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
 
+        initial_var_embedding = tf.Variable(
+            tf.random_uniform([EMBEDDING_SIZE], -1., 1),
+            name='init_var_embedding')
+        positive_literal_embeddings = tf.tile(
+            tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
+            [batch_size, variable_num, 1])
+        negative_literal_embeddings = tf.tile(
+            tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
+            [batch_size, variable_num, 1])
+
+        initial_clause_embedding = tf.Variable(
+            tf.random_uniform([EMBEDDING_SIZE], -1., 1),
+            name='init_clause_embedding')
+        clause_embeddings = tf.tile(
+            tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
+            [batch_size, clause_num, 1])
+
         for level in range(LEVEL_NUMBER+1):
-            if level == 0:
-                initial_var_embedding = tf.Variable(
-                    tf.random_uniform([EMBEDDING_SIZE], -1., 1),
-                    name='init_var_embedding')
-                positive_literal_embeddings = tf.tile(
-                    tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [batch_size, variable_num, 1])
-                negative_literal_embeddings = tf.tile(
-                    tf.reshape(initial_var_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [batch_size, variable_num, 1])
-
-                initial_clause_embedding = tf.Variable(
-                    tf.random_uniform([EMBEDDING_SIZE], -1., 1),
-                    name='init_clause_embedding')
-                clause_embeddings = tf.tile(
-                    tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
-                    [batch_size, clause_num, 1])
-
-            elif level >= 1:
+            if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 

@@ -8,10 +8,12 @@ import multiprocessing
 import numpy as np
 import os
 import tensorflow as tf
+
 from deepsense import neptune
 from tensorflow.core.framework import summary_pb2
 
 import cnf_dataset
+import neurosat_estimator
 from reports import register_training
 from timed import timed, LAST_TIMED
 
@@ -60,12 +62,33 @@ def train_policy(create_graph_fn, default_settings, representation='graph'):
     else:
         context = None
     register_training.register_training(checkpoint_dir=THIS_MODEL_DIR,
-                                        neptune_context=context)
+                                        neptune_context=context,
+                                        settings=settings,
+                                        representation=representation)
 
     print("cpu number:", multiprocessing.cpu_count())
 
     tf.reset_default_graph()
-    model = create_graph_fn(settings)
+
+    if settings["USE_TPU"]:
+        master = tf.contrib.cluster_resolver.TPUClusterResolver(tpu=[os.environ['TPU_NAME']]).get_master()
+    else:
+        master = None
+
+    run_config = tf.contrib.tpu.RunConfig(
+        model_dir=THIS_MODEL_DIR,
+        session_config=tf.ConfigProto(
+            allow_soft_placement=True, log_device_placement=True),
+        tpu_config=tf.contrib.tpu.TPUConfig(),
+        master=master)
+
+    estimator = tf.contrib.tpu.TPUEstimator(
+        model_fn=neurosat_estimator.model_fn_with_settings(create_graph_fn, settings),
+        model_dir=THIS_MODEL_DIR,
+        config=run_config,
+        train_batch_size=settings["BATCH_SIZE"],
+        use_tpu=settings["USE_TPU"]
+    )
 
     print()
     print("PARAMETERS")
@@ -108,19 +131,20 @@ def train_policy(create_graph_fn, default_settings, representation='graph'):
         if settings["BOARD_WRITE_GRAPH"]:
             train_writer.add_graph(sess.graph)
 
-        train_op = tf.train.AdamOptimizer(learning_rate=settings["LEARNING_RATE"]).minimize(model.loss)
         sess.run(tf.global_variables_initializer())
 
-        # inputs represent green arrows, that is the "or" operation
-        @timed
-        def nn_train(sample_with_labels):
+        def input_fn(params):
+            del params
+
+            sample_with_labels = dataset_generator.generate_batch(representation=representation)
             if representation == 'graph':
-                feed_dict = {
-                    model.inputs: sample_with_labels.inputs,
-                    model.policy_labels: sample_with_labels.policy_labels,
-                    model.sat_labels: sample_with_labels.sat_labels,
-                }
+                return (
+                    sample_with_labels.inputs.astype(np.float32),
+                    {"sat": np.asarray(sample_with_labels.sat_labels).astype(np.float32),
+                     "policy": sample_with_labels.policy_labels.astype(np.float32)})
+
             elif representation == 'sequence':
+                assert False
                 feed_dict = {
                     model.inputs: sample_with_labels.inputs,
                     model.lengths: sample_with_labels.lengths,
@@ -130,57 +154,5 @@ def train_policy(create_graph_fn, default_settings, representation='graph'):
             else:
                 assert False
 
-            summary, _, loss, probs = sess.run(
-                [merged_summaries, train_op, model.loss,
-                 model.policy_probabilities], feed_dict=feed_dict)
-
-            train_writer.add_summary(summary, global_samples)
-
-        @timed
-        def complete_step():
-            sample_with_labels = dataset_generator.generate_batch(representation=representation)
-            nn_train(sample_with_labels)
-
-        saver = tf.train.Saver()
-
-        global_samples = 0
-        start_time = time.time()
-        print_step = 1
-        print_step_multiply = 2
-        steps_number = int(settings["SAMPLES"]/settings["BATCH_SIZE"]) + 1
-        for global_batch in range(steps_number):
-            if global_batch % max(int(steps_number / 1000), 1) == 0 or global_batch == print_step:
-                if global_batch == print_step:
-                    print_step *= print_step_multiply
-                saver.save(sess, MODEL_PREFIX, global_step=global_samples)
-                now_time = time.time()
-                time_elapsed = now_time - start_time
-                if global_batch == 0:
-                    time_remaining = "unknown"
-                    time_total = "unknown"
-                else:
-                    time_remaining = (time_elapsed / global_batch)\
-                                     * (steps_number - global_batch)
-                    time_total = time_remaining + time_elapsed
-                print("Step {}, {}%\n"
-                      "\tsteps left: {}\n"
-                      "\ttime: {} s\n"
-                      "\test remaining: {} s\n"
-                      "\test total: {} s".format(
-                    global_batch, round(100.*global_batch/steps_number, 1),
-                    steps_number-global_batch, time_elapsed, time_remaining,
-                    time_total))
-
-            complete_step()
-
-            if global_batch % 10 == 0:
-                summary_values = [
-                    summary_pb2.Summary.Value(tag="time_per_example_" + fun_name,
-                                              simple_value=fun_time/settings["BATCH_SIZE"])
-                    for fun_name, fun_time in LAST_TIMED.items()
-                ]
-                summary = summary_pb2.Summary(value=summary_values)
-                train_writer.add_summary(summary, global_samples)
-
-            global_samples += settings["BATCH_SIZE"]
-        saver.save(sess, MODEL_PREFIX, global_step=global_samples)
+        estimator.train(input_fn=input_fn,
+                        max_steps=max(1, settings["SAMPLES"] // settings["BATCH_SIZE"]))
