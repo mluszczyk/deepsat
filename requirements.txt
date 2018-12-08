@@ -4,98 +4,89 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
-absl-py==0.2.1            # via tensorflow
+absl-py==0.6.1            # via tensorflow
 appnope==0.1.0            # via ipython
-astor==0.6.2              # via tensorflow
+astor==0.7.1              # via tensorflow
 backcall==0.1.0           # via ipython
-bleach==1.5.0             # via nbconvert, tensorboard
+bleach==3.0.2             # via nbconvert
 cachetools==3.0.0         # via google-auth
-certifi==2016.2.28        # via neptune-cli
+certifi==2018.11.29       # via requests
+chardet==3.0.4            # via requests
 cycler==0.10.0            # via matplotlib
 decorator==4.3.0          # via ipython, traitlets
-docopt==0.6.2             # via pykwalify
+defusedxml==0.5.0         # via nbconvert
 entrypoints==0.2.3        # via nbconvert
-enum34==1.1.6             # via neptune-cli
-future==0.16.0            # via neptune-cli
 gast==0.2.0               # via tensorflow
-google-api-python-client==1.7.4
+google-api-core==1.6.0    # via google-cloud-core, google-cloud-storage
+google-api-python-client==1.7.6
 google-auth-httplib2==0.0.3  # via google-api-python-client
-google-auth==1.5.1        # via google-api-python-client, google-auth-httplib2, google-cloud-core, google-cloud-storage
-google-cloud-core==0.26.0  # via google-cloud-storage
-google-cloud-storage==1.3.0
+google-auth==1.6.1        # via google-api-core, google-api-python-client, google-auth-httplib2
+google-cloud-core==0.29.0  # via google-cloud-storage
+google-cloud-storage==1.13.1
 google-resumable-media==0.3.1  # via google-cloud-storage
-googleapis-common-protos==1.5.5  # via google-cloud-core
-grpcio==1.12.0            # via tensorflow
-html5lib==0.9999999       # via bleach, tensorboard
-httplib2==0.11.3          # via google-api-python-client, google-auth-httplib2, oauth2client
-humanize==0.5.1           # via neptune-cli
-ipykernel==4.8.2          # via notebook
-ipython-genutils==0.2.0   # via jupyterlab, nbformat, notebook, traitlets
-ipython==6.4.0            # via ipykernel
-jedi==0.12.0              # via ipython
+googleapis-common-protos==1.5.5  # via google-api-core
+grpcio==1.17.1            # via tensorboard, tensorflow
+h5py==2.8.0               # via keras-applications
+httplib2==0.12.0          # via google-api-python-client, google-auth-httplib2, oauth2client
+idna==2.8                 # via requests
+ipykernel==5.1.0          # via notebook
+ipython-genutils==0.2.0   # via nbformat, notebook, traitlets
+ipython==7.2.0            # via ipykernel
+jedi==0.13.1              # via ipython
 jinja2==2.10              # via nbconvert, notebook
-jsonschema==2.6.0         # via jupyterlab-launcher, nbformat
-jupyter-client==5.2.3     # via ipykernel, notebook
+jsonschema==2.6.0         # via jupyterlab-server, nbformat
+jupyter-client==5.2.4     # via ipykernel, notebook
 jupyter-core==4.4.0       # via jupyter-client, nbconvert, nbformat, notebook
-jupyterlab-launcher==0.10.5  # via jupyterlab
-jupyterlab==0.32.1
-kitchen==1.2.4            # via neptune-cli
+jupyterlab-server==0.2.0  # via jupyterlab
+jupyterlab==0.35.4
+keras-applications==1.0.6  # via tensorflow
+keras-preprocessing==1.0.5  # via tensorflow
 kiwisolver==1.0.1         # via matplotlib
-markdown==2.6.11          # via tensorboard
-markupsafe==1.0           # via jinja2
-matplotlib==2.2.2
-mistune==0.8.3            # via nbconvert
-more-itertools==2.2       # via neptune-cli
-mpmath==1.0.0             # via sympy
-nbconvert==5.3.1          # via notebook
+markdown==3.0.1           # via tensorboard
+markupsafe==1.1.0         # via jinja2
+matplotlib==3.0.2
+mistune==0.8.4            # via nbconvert
+mpmath==1.1.0             # via sympy
+nbconvert==5.4.0          # via notebook
 nbformat==4.4.0           # via nbconvert, notebook
-neptune-cli==1.6.3
-notebook==5.5.0           # via jupyterlab, jupyterlab-launcher
-numpy==1.14.3             # via matplotlib, pandas, scipy, tensorboard, tensorflow
+notebook==5.7.2           # via jupyterlab, jupyterlab-server
+numpy==1.15.4             # via h5py, keras-applications, keras-preprocessing, matplotlib, pandas, scikit-learn, scipy, tensorboard, tensorflow
 oauth2client==4.1.3
-pandas==0.22.0
+pandas==0.23.4
 pandocfilters==1.4.2      # via nbconvert
-parso==0.2.1              # via jedi
-pexpect==4.5.0            # via ipython
-pickleshare==0.7.4        # via ipython
-pillow==5.1.0             # via neptune-cli
-prompt-toolkit==1.0.15    # via ipython
-protobuf==3.5.2.post1     # via google-cloud-core, googleapis-common-protos, tensorboard, tensorflow
-psutil==4.3.0             # via neptune-cli
-ptyprocess==0.5.2         # via pexpect, terminado
+parso==0.3.1              # via jedi
+pexpect==4.6.0            # via ipython
+pickleshare==0.7.5        # via ipython
+prometheus-client==0.5.0  # via notebook
+prompt-toolkit==2.0.7     # via ipython
+protobuf==3.6.1           # via google-api-core, googleapis-common-protos, tensorboard, tensorflow
+ptyprocess==0.6.0         # via pexpect, terminado
 pyasn1-modules==0.2.2     # via google-auth, oauth2client
 pyasn1==0.4.4             # via oauth2client, pyasn1-modules, rsa
-pygments==2.2.0           # via ipython, nbconvert
-pykwalify==1.5.2          # via neptune-cli
-pyparsing==2.2.0          # via matplotlib
-python-dateutil==2.4.2    # via jupyter-client, matplotlib, neptune-cli, pandas, pykwalify
+pygments==2.3.0           # via ipython, nbconvert
+pyparsing==2.3.0          # via matplotlib
+python-dateutil==2.7.5    # via jupyter-client, matplotlib, pandas
 python-sat==0.1.3.dev24
-pytz==2018.4              # via matplotlib, pandas
-pyyaml==3.11              # via neptune-cli, pykwalify
-pyzmq==17.0.0             # via jupyter-client, notebook
-requests==2.11.1          # via google-cloud-core, google-cloud-storage, neptune-cli
+pytz==2018.7              # via google-api-core, pandas
+pyzmq==17.1.2             # via jupyter-client, notebook
+requests==2.21.0          # via google-api-core
 rsa==4.0                  # via google-auth, oauth2client
-scikit-learn==0.19.1      # via sklearn
+scikit-learn==0.20.1      # via sklearn
 scipy==1.1.0
 send2trash==1.5.0         # via notebook
-simplegeneric==0.8.1      # via ipython
-six==1.10.0               # via absl-py, bleach, cycler, google-api-python-client, google-auth, google-cloud-core, google-resumable-media, grpcio, html5lib, matplotlib, neptune-cli, oauth2client, prompt-toolkit, protobuf, python-dateutil, python-sat, tenacity, tensorboard, tensorflow, traitlets, websocket-client
+six==1.12.0               # via absl-py, bleach, cycler, google-api-core, google-api-python-client, google-auth, google-resumable-media, grpcio, h5py, keras-preprocessing, oauth2client, prompt-toolkit, protobuf, python-dateutil, python-sat, tensorboard, tensorflow, traitlets
 sklearn==0.0
-sympy==1.1.1
-tenacity==4.12.0          # via google-cloud-core
-tensorboard==1.8.0        # via tensorflow
-tensorflow==1.8.0
+sympy==1.3
+tensorboard==1.12.0       # via tensorflow
+tensorflow==1.12
 termcolor==1.1.0          # via tensorflow
 terminado==0.8.1          # via notebook
-terminaltables==2.1.0     # via neptune-cli
-testpath==0.3.1           # via nbconvert
-tornado==4.2              # via ipykernel, jupyter-client, neptune-cli, notebook, terminado
-tqdm==4.11.2              # via neptune-cli
+testpath==0.4.2           # via nbconvert
+tornado==5.1.1            # via ipykernel, jupyter-client, notebook, terminado
 traitlets==4.3.2          # via ipykernel, ipython, jupyter-client, jupyter-core, nbconvert, nbformat, notebook
 uritemplate==3.0.0        # via google-api-python-client
-urllib3==1.16             # via neptune-cli
-voluptuous==0.9.3         # via neptune-cli
+urllib3==1.24.1           # via requests
 wcwidth==0.1.7            # via prompt-toolkit
-websocket-client==0.35.0  # via neptune-cli
+webencodings==0.5.1       # via bleach
 werkzeug==0.14.1          # via tensorboard
-wheel==0.31.1             # via tensorboard, tensorflow
+wheel==0.32.3             # via tensorboard, tensorflow

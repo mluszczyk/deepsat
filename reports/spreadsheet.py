@@ -7,7 +7,7 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets'
 
 # The ID and range of a sample spreadsheet.
 SAMPLE_SPREADSHEET_ID = '1Qh6ewiZLtbwm1wutvbAYtRKhuF6d01t9c5Q7cxhgbj4'
-SAMPLE_RANGE_NAME = 'Arkusz1!A1:Z10'
+SAMPLE_RANGE_NAME = 'Arkusz1!A1:Z100'
 SAMPLE_VALUE_INPUT_OPTION = 'RAW'
 
 

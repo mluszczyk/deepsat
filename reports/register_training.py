@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import traceback
@@ -8,7 +9,7 @@ import requests
 from reports.spreadsheet import Spreadsheet
 
 
-def register_training(checkpoint_dir, neptune_context=None):
+def register_training(checkpoint_dir, neptune_context=None, settings=None, representation=None):
     print("Register training")
     uid = str(uuid.uuid4())
 
@@ -32,7 +33,8 @@ def register_training(checkpoint_dir, neptune_context=None):
     else:
         neptune_url = ""
 
-    items = [uid, host, path, "", "", neptune_url, "sequence", "8"]
+    items = [uid, host, path, "", "", neptune_url,
+             representation if representation is not None else "", "", str(settings)]
     try:
         print("Add to spreadsheet {}".format(items))
         spreadsheet = Spreadsheet()

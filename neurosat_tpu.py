@@ -1,59 +1,74 @@
 # coding: utf-8
 
 import tensorflow as tf
+import numpy as np
 
-from assert_shape import assert_shape
-from train_policy import train_policy
+
+tf.flags.DEFINE_string(
+    "tpu", default=None,
+    help="The Cloud TPU to use for training. This should be either the name "
+    "used when creating the Cloud TPU, or a grpc://ip.address.of.tpu:8470 "
+    "url.")
+
+tf.flags.DEFINE_string("model_dir", None, "Estimator model_dir")
+tf.flags.DEFINE_bool("use_tpu", True, "Use TPUs rather than plain CPUs")
+tf.flags.DEFINE_integer("iterations", 50,
+                        "Number of iterations per TPU training loop.")
+tf.flags.DEFINE_integer("train_steps", 1000, "Total number of training steps.")
+tf.flags.DEFINE_string("train_file", None, "Train file")
+
+
+FLAGS = tf.flags.FLAGS
+
 
 DEFAULT_SETTINGS = {
-    "VARIABLE_NUM":  8,
-    "MIN_VARIABLE_NUM": 8,
 
     # Only for not SR
-    "CLAUSE_SIZE": 3,
-    "CLAUSE_NUM": 150,
     "MIN_CLAUSE_NUM": 1,
 
     "SR_GENERATOR": True,
 
     # Neural net
     "EMBEDDING_SIZE": 128,
-    "LEVEL_NUMBER": 10,
 
     "POS_NEG_ACTIVATION": None,
     "HIDDEN_LAYERS": [128, 128],
     "HIDDEN_ACTIVATION": tf.nn.relu,
     "EMBED_ACTIVATION": tf.nn.tanh,
 
-    "LEARNING_RATE": 0.001,
 
     "POLICY_LOSS_WEIGHT": 1,
     "SAT_LOSS_WEIGHT": 1,
-    "BATCH_SIZE": 64,
 
     "NEPTUNE_ENABLED": False,
-    "BOARD_WRITE_GRAPH": True,
+    "BOARD_WRITE_GRAPH": False,
 
     # Size of dataset
 
-    "SAMPLES": 10 ** 8,
+    "SAMPLES": 10 ** 4,
 
     # Multiprocessing
-    "PROCESSOR_NUM": None,  # defaults to all processors,
-
-    "USE_TPU": False,
+    # "PROCESSOR_NUM": None,  # defaults to all processors,
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
-}
 
-# ------------------------------------------
+    'VARIABLE_NUM': 8,
+    'CLAUSE_NUM': 80,
+    'LEARNING_RATE': 0.001,
+    # 'CLAUSE_SIZE': 3,  # not applicable for graph network
+    # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
+    'LEVEL_NUMBER': 0,
+    'BATCH_SIZE': 64
+}
 
 
 class Graph:
     def __init__(self, settings, features=None, labels=None):
-        BATCH_SIZE = None
+        BATCH_SIZE = DEFAULT_SETTINGS["BATCH_SIZE"]
+        VARIABLE_NUM = DEFAULT_SETTINGS["VARIABLE_NUM"]
+        CLAUSE_NUM = DEFAULT_SETTINGS["CLAUSE_NUM"]
         if features is None:
-            self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, None, 2), name='inputs')
+            self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM, CLAUSE_NUM, 2), name='inputs')
         else:
             self.inputs = features
 
@@ -62,15 +77,15 @@ class Graph:
             del b
 
         if labels is None:
-            self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, None, 2), name='policy_labels')
+            self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, CLAUSE_NUM, 2), name='policy_labels')
             self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
         else:
             self.sat_labels = labels["sat"]
             self.policy_labels = labels["policy"]
 
-        batch_size = tf.shape(self.inputs)[0]
-        variable_num = tf.shape(self.inputs)[1]
-        clause_num = tf.shape(self.inputs)[2]
+        batch_size = BATCH_SIZE
+        variable_num = VARIABLE_NUM
+        clause_num = CLAUSE_NUM
         assert_shape(variable_num, [])
         assert_shape(clause_num, [])
 
@@ -200,13 +215,6 @@ class Graph:
             self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
             self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
 
-            '''
-            self.policy_top1_error = 1.0 - tf.reduce_sum(tf.gather_nd(
-                self.policy_labels,
-                tf.stack([tf.range(BATCH_SIZE), tf.argmax(self.policy_probabilities_for_cmp, axis=1, output_type=tf.int32)],
-                         axis=1))) / (tf.reduce_sum(self.sat_labels))
-            '''
-
             # we do not want to count unsat into policy_error
             self.policy_error = tf.reduce_sum(tf.abs(
                 tf.round(self.policy_probabilities_for_cmp) - self.policy_labels)) / (
@@ -236,9 +244,132 @@ class Graph:
         #                   tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
-def main():
-    train_policy(Graph, DEFAULT_SETTINGS)
+def model_fn(features, labels, mode, params):
+    del params
+
+    graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
+
+    if mode == tf.estimator.ModeKeys.EVAL:
+        return tf.contrib.tpu.TPUEstimatorSpec(
+            mode, loss=graph.loss,
+            eval_metric_ops={'sat_error': graph.sat_error,
+                             'policy_error': graph.policy_error})
+
+    elif mode == tf.estimator.ModeKeys.TRAIN:
+        loss = graph.loss
+        optimizer = tf.train.AdamOptimizer(learning_rate=DEFAULT_SETTINGS["LEARNING_RATE"])
+
+        if FLAGS.use_tpu:
+            optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
+
+        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+        return tf.contrib.tpu.TPUEstimatorSpec(
+            mode,
+            loss=loss,
+            train_op=train_op
+        )
+    else:
+        assert False
+
+
+def dummy_sample():
+    # Made just to fit the shape and to isolate actual data generation.
+
+    sample_number = DEFAULT_SETTINGS["BATCH_SIZE"]
+    variable_number = DEFAULT_SETTINGS["VARIABLE_NUM"]
+    clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
+
+    features = np.asarray([[[[1, 0] for _ in range(clause_num)]
+                            for _ in range(variable_number)]
+                           for _ in range(sample_number)])
+
+    policy_labels = np.asarray([[[1, 0] for _ in range(variable_number)]
+                                for _ in range(sample_number)])
+    sat_labels = np.asarray([True for _ in range(sample_number)])
+
+    return features, sat_labels, policy_labels
+
+
+def train_input_fn(params):
+    del params
+
+    batch_size = DEFAULT_SETTINGS["BATCH_SIZE"]
+
+    variable_num = DEFAULT_SETTINGS["VARIABLE_NUM"]
+    clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
+
+    def parser(serialized_example):
+        return tf.parse_single_example(
+            serialized_example,
+            features={
+                'inputs': tf.FixedLenFeature([variable_num, clause_num, 2], tf.float32),
+                'sat': tf.FixedLenFeature([], tf.float32),
+                'policy': tf.FixedLenFeature([variable_num, 2], tf.float32),
+            })
+
+    dataset = tf.data.TFRecordDataset(FLAGS.train_file)
+    dataset = dataset.map(parser, num_parallel_calls=batch_size)
+    # dataset = dataset.prefetch(4 * batch_size).cache().repeat()
+    dataset = dataset.map(lambda x:
+                          (x["inputs"],{"sat": x["sat"], "policy": x["policy"]}))
+
+    dataset = dataset.batch(batch_size)
+
+    dataset = dataset.make_one_shot_iterator().get_next()
+    return dataset
+
+
+def dummy_train_input_fn(params):
+    del params
+
+    features, sat_labels, policy_labels = dummy_sample()
+
+
+    features, labels = (
+        features.astype(np.float32),
+        {"sat": np.asarray(sat_labels).astype(np.float32),
+         "policy": policy_labels.astype(np.float32)})
+    # return features, labels
+    ds = tf.data.Dataset.from_tensors((features, labels)).repeat()
+    features, labels = ds.make_one_shot_iterator().get_next()
+    return features, labels
+
+
+
+def main(argv):
+  del argv  # Unused.
+  tf.logging.set_verbosity(tf.logging.INFO)
+
+  if FLAGS.use_tpu:
+      tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+          FLAGS.tpu,
+      )
+  else:
+      tpu_cluster_resolver = None
+
+  run_config = tf.contrib.tpu.RunConfig(
+      cluster=tpu_cluster_resolver,
+      model_dir=FLAGS.model_dir,
+      session_config=tf.ConfigProto(
+          allow_soft_placement=True, log_device_placement=True),
+      tpu_config=tf.contrib.tpu.TPUConfig(FLAGS.iterations),
+  )
+
+  estimator = tf.contrib.tpu.TPUEstimator(
+      model_fn=model_fn,
+      use_tpu=FLAGS.use_tpu,
+      train_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
+      eval_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
+      predict_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
+      config=run_config)
+  # TPUEstimator.train *requires* a max_steps argument.
+  estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
+  # TPUEstimator.evaluate *requires* a steps argument.
+  # Note that the number of examples used during evaluation is
+  # --eval_steps * --batch_size.
+  # So if you change --batch_size then change --eval_steps too.
+
 
 
 if __name__ == "__main__":
-    main()
+  tf.app.run()
