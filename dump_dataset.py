@@ -32,7 +32,7 @@ def main():
         "BATCH_SIZE": 1,
         "SR_GENERATOR": True
     }
-    n_observations = 100
+    n_observations = 10000
 
     with cnf_dataset.PoolDatasetGenerator(options) as generator, \
             tf.python_io.TFRecordWriter(filename) as writer:
