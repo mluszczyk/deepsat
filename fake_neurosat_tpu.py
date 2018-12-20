@@ -44,22 +44,21 @@ DEFAULT_SETTINGS = {
 
     # Size of dataset
 
-    "SAMPLES": 10 ** 8,
+    "SAMPLES": 10 ** 4,
 
     # Multiprocessing
-    "PROCESSOR_NUM": None,  # defaults to all processors,
+    # "PROCESSOR_NUM": None,  # defaults to all processors,
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
 
-    'VARIABLE_NUM': 30,
-    'CLAUSE_NUM': 400,
+    'VARIABLE_NUM': 8,
+    'CLAUSE_NUM': 80,
     'LEARNING_RATE': 0.001,
-    'CLAUSE_SIZE': 3,
-    'MIN_VARIABLE_NUM': 30,
+    # 'CLAUSE_SIZE': 3,  # not applicable for graph network
+    # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
     'LEVEL_NUMBER': 1,
-    'BATCH_SIZE': 64
+    'BATCH_SIZE': 128
 }
-
 
 
 class Graph:
@@ -302,7 +301,6 @@ def train_input_fn(params):
     ds = tf.data.Dataset.from_tensors((features, labels)).repeat()
     features, labels = ds.make_one_shot_iterator().get_next()
     return features, labels
-
 
 
 def main(argv):
