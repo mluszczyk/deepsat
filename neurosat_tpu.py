@@ -58,30 +58,25 @@ DEFAULT_SETTINGS = {
     # 'CLAUSE_SIZE': 3,  # not applicable for graph network
     # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
     'LEVEL_NUMBER': 0,
-    'BATCH_SIZE': 64
+    'BATCH_SIZE': 128
 }
 
 
 class Graph:
-    def __init__(self, settings, features=None, labels=None):
+    def __init__(self, settings, features, labels):
         BATCH_SIZE = DEFAULT_SETTINGS["BATCH_SIZE"]
         VARIABLE_NUM = DEFAULT_SETTINGS["VARIABLE_NUM"]
         CLAUSE_NUM = DEFAULT_SETTINGS["CLAUSE_NUM"]
-        if features is None:
-            self.inputs = tf.placeholder(tf.float32, shape=(BATCH_SIZE, VARIABLE_NUM, CLAUSE_NUM, 2), name='inputs')
-        else:
-            self.inputs = features
+        self.inputs = features
 
         def assert_shape(a, b):
             del a
             del b
 
-        if labels is None:
-            self.policy_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, CLAUSE_NUM, 2), name='policy_labels')
-            self.sat_labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE,), name='sat_labels')
-        else:
-            self.sat_labels = labels["sat"]
-            self.policy_labels = labels["policy"]
+        self.sat_labels = tf.constant(1., dtype=tf.float32, shape=[BATCH_SIZE])
+        print("sat labels shape at graph init", self.sat_labels.get_shape())
+        self.policy_labels = labels
+        print("policy labels shape at graph init", self.policy_labels.get_shape())
 
         batch_size = BATCH_SIZE
         variable_num = VARIABLE_NUM
@@ -205,6 +200,9 @@ class Graph:
             # zero out policy for test when UNSAT
             # requires sat_labels to be provided, so needs to be a separate tensor in order
             # for inference to work
+            print("batch size", batch_size)
+            print("sat labels", self.sat_labels.get_shape())
+            print("policy logits", self.policy_logits.get_shape())
             self.policy_logits_for_cmp = tf.reshape(self.sat_labels, [batch_size, 1, 1]) * self.policy_logits
 
             self.policy_loss = tf.losses.sigmoid_cross_entropy(
@@ -311,11 +309,15 @@ def train_input_fn(params):
     dataset = dataset.map(parser, num_parallel_calls=batch_size)
     # dataset = dataset.prefetch(4 * batch_size).cache().repeat()
     dataset = dataset.map(lambda x:
-                          (x["inputs"],{"sat": x["sat"], "policy": x["policy"]}))
+                          # (x["inputs"],{"sat": x["sat"], "policy": x["policy"]}))
+                          (x["inputs"], x["policy"]))
 
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 
     dataset = dataset.make_one_shot_iterator().get_next()
+    print("shape inputs", dataset[0].get_shape())
+    # print("shape sat", dataset[1]["sat"].get_shape())
+    print("shape policy", dataset[1].get_shape())
     return dataset
 
 
@@ -327,13 +329,14 @@ def dummy_train_input_fn(params):
 
     features, labels = (
         features.astype(np.float32),
-        {"sat": np.asarray(sat_labels).astype(np.float32),
-         "policy": policy_labels.astype(np.float32)})
+        # {"sat": np.asarray(sat_labels).astype(np.float32),
+        # "policy":
+        policy_labels.astype(np.float32)#})
+    )
     # return features, labels
     ds = tf.data.Dataset.from_tensors((features, labels)).repeat()
     features, labels = ds.make_one_shot_iterator().get_next()
     return features, labels
-
 
 
 def main(argv):
@@ -363,7 +366,7 @@ def main(argv):
       predict_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
       config=run_config)
   # TPUEstimator.train *requires* a max_steps argument.
-  estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
+  estimator.train(input_fn=dummy_train_input_fn, max_steps=FLAGS.train_steps)
   # TPUEstimator.evaluate *requires* a steps argument.
   # Note that the number of examples used during evaluation is
   # --eval_steps * --batch_size.
