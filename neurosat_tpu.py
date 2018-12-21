@@ -12,10 +12,11 @@ tf.flags.DEFINE_string(
 
 tf.flags.DEFINE_string("model_dir", None, "Estimator model_dir")
 tf.flags.DEFINE_bool("use_tpu", True, "Use TPUs rather than plain CPUs")
-tf.flags.DEFINE_integer("iterations", 50,
+tf.flags.DEFINE_integer("iterations", 100,
                         "Number of iterations per TPU training loop.")
 tf.flags.DEFINE_integer("train_steps", 1000, "Total number of training steps.")
 tf.flags.DEFINE_string("train_file", None, "Train file")
+tf.flags.DEFINE_integer("batch_size", 1024, "Batch size")
 
 
 FLAGS = tf.flags.FLAGS
@@ -58,7 +59,6 @@ DEFAULT_SETTINGS = {
     # 'CLAUSE_SIZE': 3,  # not applicable for graph network
     # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
     'LEVEL_NUMBER': 1,
-    'BATCH_SIZE': 128
 }
 
 
@@ -227,27 +227,28 @@ class Graph:
             self.loss += self.level_loss
 
             lvln = "_level_{}".format(level)
-            # tf.summary.scalar("loss"+lvln, self.level_loss)
-            # tf.summary.scalar("policy_loss"+lvln, self.policy_loss)
-            # tf.summary.scalar("policy_error"+lvln, self.policy_error)
-            # #tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
-            # tf.summary.scalar("sat_loss"+lvln, self.sat_loss)
-            # tf.summary.scalar("sat_error"+lvln, self.sat_error)
-            # tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
+            tf.contrib.summary.scalar("loss"+lvln, self.level_loss)
+            tf.contrib.summary.scalar("policy_loss"+lvln, self.policy_loss)
+            tf.contrib.summary.scalar("policy_error"+lvln, self.policy_error)
+            # tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
+            tf.contrib.summary.scalar("sat_loss"+lvln, self.sat_loss)
+            tf.contrib.summary.scalar("sat_error"+lvln, self.sat_error)
+            tf.contrib.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
-        # tf.summary.scalar("loss", self.loss)
-        # tf.summary.scalar("policy_loss", self.policy_loss)
-        # tf.summary.scalar("policy_error", self.policy_error)
-        # tf.summary.scalar("policy_top1_error", self.policy_top1_error)
-        # tf.summary.scalar("sat_loss", self.sat_loss)
-        # tf.summary.scalar("sat_error", self.sat_error)
-        # tf.summary.scalar("sat_fraction",
-        #                   tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
+        tf.contrib.summary.scalar("loss", self.loss)
+        tf.contrib.summary.scalar("policy_loss", self.policy_loss)
+        tf.contrib.summary.scalar("policy_error", self.policy_error)
+        # tf.contrib.summary.scalar("policy_top1_error", self.policy_top1_error)
+        tf.contrib.summary.scalar("sat_loss", self.sat_loss)
+        tf.contrib.summary.scalar("sat_error", self.sat_error)
+        tf.contrib.summary.scalar("sat_fraction",
+                           tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
 def model_fn(features, labels, mode, params):
     del params
 
+    tf.contrib.summary.scalar("scalar_test", tf.constant(1.0))
     graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
 
     if mode == tf.estimator.ModeKeys.EVAL:
@@ -276,7 +277,7 @@ def model_fn(features, labels, mode, params):
 def dummy_sample():
     # Made just to fit the shape and to isolate actual data generation.
 
-    sample_number = DEFAULT_SETTINGS["BATCH_SIZE"]
+    sample_number = FLAGS.batch_size
     variable_number = DEFAULT_SETTINGS["VARIABLE_NUM"]
     clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
 
@@ -294,7 +295,7 @@ def dummy_sample():
 def train_input_fn(params):
     del params
 
-    batch_size = DEFAULT_SETTINGS["BATCH_SIZE"]
+    batch_size = FLAGS.batch_size
 
     variable_num = DEFAULT_SETTINGS["VARIABLE_NUM"]
     clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
@@ -361,9 +362,9 @@ def main(argv):
   estimator = tf.contrib.tpu.TPUEstimator(
       model_fn=model_fn,
       use_tpu=FLAGS.use_tpu,
-      train_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
-      eval_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
-      predict_batch_size=DEFAULT_SETTINGS["BATCH_SIZE"],
+      train_batch_size=FLAGS.batch_size,
+      eval_batch_size=FLAGS.batch_size,
+      predict_batch_size=FLAGS.batch_size,
       config=run_config)
   # TPUEstimator.train *requires* a max_steps argument.
   estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
