@@ -34,6 +34,7 @@ def create_host_call(model_dir):
   Returns:
     (fn, args) Pair to be called by TPUEstimator as the host_call.
   """
+  print("create host call called")
   graph = tf.get_default_graph()
   summaries = graph.get_collection(tf.GraphKeys.SUMMARIES)
   gs_t = tf.reshape(tf.to_int32(tf.train.get_global_step()), [1])
@@ -79,6 +80,7 @@ def create_host_call(model_dir):
     Returns:
       List of summary ops to run on the CPU host.
     """
+    print("host call called")
     gs = tf.to_int64(kwargs.pop("global_step")[0])
     with tf.contrib.summary.create_file_writer(model_dir).as_default():
       with tf.contrib.summary.always_record_summaries():

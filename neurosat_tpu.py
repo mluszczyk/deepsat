@@ -265,11 +265,15 @@ def model_fn(features, labels, mode, params):
         if FLAGS.use_tpu:
             optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
+        host_call = host_call_ported.create_host_call(FLAGS.model_dir)
+        host_call_ported.remove_summaries()
+
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode,
             loss=loss,
-            train_op=train_op
+            train_op=train_op,
+            host_call=host_call
         )
     else:
         assert False
@@ -359,16 +363,13 @@ def main(argv):
       tpu_config=tf.contrib.tpu.TPUConfig(FLAGS.iterations),
   )
 
-  host_call = host_call_ported.create_host_call(FLAGS.model_dir)
-
   estimator = tf.contrib.tpu.TPUEstimator(
       model_fn=model_fn,
       use_tpu=FLAGS.use_tpu,
       train_batch_size=FLAGS.batch_size,
       eval_batch_size=FLAGS.batch_size,
       predict_batch_size=FLAGS.batch_size,
-      config=run_config,
-      host_call=host_call)
+      config=run_config)
   # TPUEstimator.train *requires* a max_steps argument.
   estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
   # TPUEstimator.evaluate *requires* a steps argument.
