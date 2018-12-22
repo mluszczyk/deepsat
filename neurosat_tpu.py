@@ -18,6 +18,7 @@ tf.flags.DEFINE_integer("iterations", 100,
 tf.flags.DEFINE_integer("train_steps", 1000, "Total number of training steps.")
 tf.flags.DEFINE_string("train_file", None, "Train file")
 tf.flags.DEFINE_integer("batch_size", 1024, "Batch size")
+tf.flags.DEFINE_bool("tpu_enable_host_call", False, "Enable TPUEstimator host_call.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -264,7 +265,10 @@ def model_fn(features, labels, mode, params):
 
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
-        host_call = host_call_ported.create_host_call(FLAGS.model_dir)
+        if FLAGS.tpu_enable_host_call:
+            host_call = host_call_ported.create_host_call(FLAGS.model_dir)
+        else:
+            host_call = None
         host_call_ported.remove_summaries()
 
         return tf.contrib.tpu.TPUEstimatorSpec(

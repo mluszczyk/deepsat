@@ -38,7 +38,12 @@ With 8 var dataset:
 
     INFO:tensorflow:global_step/sec: 294.272
     INFO:tensorflow:examples/sec: 301335
+    
+    
+However, with `host_call` (summaries in TensorBoard):
 
+    INFO:tensorflow:global_step/sec: 0.874507
+    INFO:tensorflow:examples/sec: 895.495
 
 ### How to run it?
 
