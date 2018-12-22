@@ -1,3 +1,45 @@
+### TPU status
+
+Run on TPU like this:
+
+    python neurosat_tpu.py \
+        --use_tpu=True \
+        --tpu=$TPU_NAME \
+        --model_dir=gs://neural-guidance-tensorflow/$MODEL_NAME \
+        --train_file=gs://neural-guidance-tensorflow/test-10k.tfrecord \
+        --train_steps=1000
+        
+Set `TPU_NAME` to something like `ng-tpu-02`. Set model name to any desired unique 
+name for the experiment e.g. `test-124`.
+        
+Tensorboard is set up to watch gs://neural-guidance-tensorflow/.
+
+Run locally on CPU (for testing) like this:
+
+    python neurosat_tpu.py \
+        --use_tpu=False \
+        --model_dir=/tmp/tb/model003 \
+        --train_file=test-10k.tfrecord \
+        --train_steps=100 \
+        --batch_size=16
+
+
+#### Generating data
+
+Data is generated using `dump_data.py`. TPU works only with Google Storage,
+so execute the following command in order to use new dataset:
+
+    gsuitl cp test-10k.tfrecord gs://neural-guidance-tensorflow
+    
+    
+#### Performance
+
+With 8 var dataset:
+
+    INFO:tensorflow:global_step/sec: 294.272
+    INFO:tensorflow:examples/sec: 301335
+
+
 ### How to run it?
 
 #### Running on Prometheus
