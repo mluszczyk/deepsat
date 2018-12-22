@@ -3,6 +3,7 @@
 import tensorflow as tf
 import numpy as np
 
+import host_call as host_call_ported
 
 tf.flags.DEFINE_string(
     "tpu", default=None,
@@ -312,7 +313,7 @@ def train_input_fn(params):
     dataset = tf.data.TFRecordDataset(FLAGS.train_file)
     dataset = dataset.map(parser, num_parallel_calls=batch_size)
     dataset = dataset.map(lambda x:
-                          (x["inputs"],{"sat": x["sat"], "policy": x["policy"]}))
+                          (x["inputs"], {"sat": x["sat"], "policy": x["policy"]}))
 
     dataset = dataset.batch(batch_size, drop_remainder=True)
     dataset = dataset.prefetch(4).cache().repeat()
@@ -328,7 +329,6 @@ def dummy_train_input_fn(params):
     del params
 
     features, sat_labels, policy_labels = dummy_sample()
-
 
     features, labels = (
         features.astype(np.float32),
@@ -359,13 +359,16 @@ def main(argv):
       tpu_config=tf.contrib.tpu.TPUConfig(FLAGS.iterations),
   )
 
+  host_call = host_call_ported.create_host_call(FLAGS.model_dir)
+
   estimator = tf.contrib.tpu.TPUEstimator(
       model_fn=model_fn,
       use_tpu=FLAGS.use_tpu,
       train_batch_size=FLAGS.batch_size,
       eval_batch_size=FLAGS.batch_size,
       predict_batch_size=FLAGS.batch_size,
-      config=run_config)
+      config=run_config,
+      host_call=host_call)
   # TPUEstimator.train *requires* a max_steps argument.
   estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
   # TPUEstimator.evaluate *requires* a steps argument.
