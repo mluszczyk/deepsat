@@ -228,35 +228,32 @@ class Graph:
             self.loss += self.level_loss
 
             lvln = "_level_{}".format(level)
-            tf.contrib.summary.scalar("loss"+lvln, self.level_loss)
-            tf.contrib.summary.scalar("policy_loss"+lvln, self.policy_loss)
-            tf.contrib.summary.scalar("policy_error"+lvln, self.policy_error)
+            tf.summary.scalar("loss"+lvln, self.level_loss)
+            tf.summary.scalar("policy_loss"+lvln, self.policy_loss)
+            tf.summary.scalar("policy_error"+lvln, self.policy_error)
             # tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
-            tf.contrib.summary.scalar("sat_loss"+lvln, self.sat_loss)
-            tf.contrib.summary.scalar("sat_error"+lvln, self.sat_error)
-            tf.contrib.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
+            tf.summary.scalar("sat_loss"+lvln, self.sat_loss)
+            tf.summary.scalar("sat_error"+lvln, self.sat_error)
+            tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
-        tf.contrib.summary.scalar("loss", self.loss)
-        tf.contrib.summary.scalar("policy_loss", self.policy_loss)
-        tf.contrib.summary.scalar("policy_error", self.policy_error)
-        # tf.contrib.summary.scalar("policy_top1_error", self.policy_top1_error)
-        tf.contrib.summary.scalar("sat_loss", self.sat_loss)
-        tf.contrib.summary.scalar("sat_error", self.sat_error)
-        tf.contrib.summary.scalar("sat_fraction",
+        # tf.summary.scalar("loss", self.loss)
+        tf.summary.scalar("policy_loss", self.policy_loss)
+        tf.summary.scalar("policy_error", self.policy_error)
+        # tf.summary.scalar("policy_top1_error", self.policy_top1_error)
+        tf.summary.scalar("sat_loss", self.sat_loss)
+        tf.summary.scalar("sat_error", self.sat_error)
+        tf.summary.scalar("sat_fraction",
                            tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
 def model_fn(features, labels, mode, params):
     del params
 
-    tf.contrib.summary.scalar("scalar_test", tf.constant(1.0))
     graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
 
     if mode == tf.estimator.ModeKeys.EVAL:
         return tf.contrib.tpu.TPUEstimatorSpec(
-            mode, loss=graph.loss,
-            eval_metric_ops={'sat_error': graph.sat_error,
-                             'policy_error': graph.policy_error})
+            mode, loss=graph.loss)
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
@@ -265,16 +262,16 @@ def model_fn(features, labels, mode, params):
         if FLAGS.use_tpu:
             optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
+        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
         host_call = host_call_ported.create_host_call(FLAGS.model_dir)
         host_call_ported.remove_summaries()
 
-        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode,
             loss=loss,
             train_op=train_op,
-            host_call=host_call
-        )
+            host_call=host_call)
     else:
         assert False
 
