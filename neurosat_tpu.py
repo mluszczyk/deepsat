@@ -247,11 +247,6 @@ class Graph:
         tf.summary.scalar("sat_fraction",
                            tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
-        # self.policy_error_metric = tf.metrics.mean_absolute_error(
-        #     labels=self.policy_labels,
-        #     predictions=tf.round(self.policy_probabilities_for_cmp)) / (
-        #     tf.reduce_sum(self.sat_labels)) / (tf.cast(variable_num, dtype=tf.float32) * 2.0)
-
 
 def model_fn(features, labels, mode, params):
     del params
@@ -259,15 +254,22 @@ def model_fn(features, labels, mode, params):
     graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
 
     if mode == tf.estimator.ModeKeys.EVAL:
-        def metric_fn(sat_labels, sat_probabilities):
-            return {'sat_error': tf.metrics.mean_absolute_error(
-                        labels=sat_labels,
-                        predictions=sat_probabilities)
+        def metric_fn(sat_labels, sat_probabilities,
+                      policy_labels, policy_probabilities):
+            return {
+                'sat_error': tf.metrics.mean_absolute_error(
+                    labels=sat_labels,
+                    predictions=sat_probabilities),
+                # policy_error has wrong normalisation, look at policy_error scalar!
+                'policy_error': tf.metrics.mean_absolute_error(
+                    labels=policy_labels,
+                    predictions=policy_probabilities)
             }
 
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode, loss=graph.loss, eval_metrics=(metric_fn, [
-                graph.sat_labels, tf.round(graph.sat_probabilities)]))
+                graph.sat_labels, tf.round(graph.sat_probabilities),
+                graph.policy_labels, tf.round(graph.policy_probabilities)]))
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
