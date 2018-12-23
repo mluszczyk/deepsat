@@ -1,3 +1,0 @@
-gcloud config set project simulators-of-simulators
-gcloud config set compute/zone us-central1-c
-export TPU_NAME='node-1'
