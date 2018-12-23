@@ -17,6 +17,7 @@ tf.flags.DEFINE_integer("iterations", 100,
                         "Number of iterations per TPU training loop.")
 tf.flags.DEFINE_integer("train_steps", 1000, "Total number of training steps.")
 tf.flags.DEFINE_string("train_file", None, "Train file")
+tf.flags.DEFINE_string("test_file", None, "Test file")
 tf.flags.DEFINE_integer("batch_size", 1024, "Batch size")
 tf.flags.DEFINE_bool("tpu_enable_host_call", False, "Enable TPUEstimator host_call.")
 
@@ -224,7 +225,7 @@ class Graph:
                   tf.reduce_sum(self.sat_labels)) / (tf.cast(variable_num, dtype=tf.float32) * 2.0)
             self.sat_error = tf.reduce_mean(tf.abs(
                 tf.round(self.sat_probabilities) - self.sat_labels))
-        
+
             self.level_loss = SAT_LOSS_WEIGHT * self.sat_loss + POLICY_LOSS_WEIGHT * self.policy_loss
             self.loss += self.level_loss
 
@@ -246,6 +247,11 @@ class Graph:
         tf.summary.scalar("sat_fraction",
                            tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
+        # self.policy_error_metric = tf.metrics.mean_absolute_error(
+        #     labels=self.policy_labels,
+        #     predictions=tf.round(self.policy_probabilities_for_cmp)) / (
+        #     tf.reduce_sum(self.sat_labels)) / (tf.cast(variable_num, dtype=tf.float32) * 2.0)
+
 
 def model_fn(features, labels, mode, params):
     del params
@@ -253,8 +259,15 @@ def model_fn(features, labels, mode, params):
     graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
 
     if mode == tf.estimator.ModeKeys.EVAL:
+        def metric_fn(sat_labels, sat_probabilities):
+            return {'sat_error': tf.metrics.mean_absolute_error(
+                        labels=sat_labels,
+                        predictions=sat_probabilities)
+            }
+
         return tf.contrib.tpu.TPUEstimatorSpec(
-            mode, loss=graph.loss)
+            mode, loss=graph.loss, eval_metrics=(metric_fn, [
+                graph.sat_labels, tf.round(graph.sat_probabilities)]))
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
@@ -298,9 +311,7 @@ def dummy_sample():
     return features, sat_labels, policy_labels
 
 
-def train_input_fn(params):
-    del params
-
+def make_dataset(filename):
     batch_size = FLAGS.batch_size
 
     variable_num = DEFAULT_SETTINGS["VARIABLE_NUM"]
@@ -315,18 +326,30 @@ def train_input_fn(params):
                 'policy': tf.FixedLenFeature([variable_num, 2], tf.float32),
             })
 
-    dataset = tf.data.TFRecordDataset(FLAGS.train_file)
+    dataset = tf.data.TFRecordDataset(filename)
     dataset = dataset.map(parser, num_parallel_calls=batch_size)
     dataset = dataset.map(lambda x:
                           (x["inputs"], {"sat": x["sat"], "policy": x["policy"]}))
 
-    dataset = dataset.batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(4).cache().repeat()
+    return dataset
 
+
+def train_input_fn(params):
+    del params
+
+    dataset = make_dataset(FLAGS.train_file)
+    dataset = dataset.batch(FLAGS.batch_size, drop_remainder=True)
+    dataset = dataset.prefetch(4).cache().repeat()
     dataset = dataset.make_one_shot_iterator().get_next()
-    print("shape inputs", dataset[0].get_shape())
-    print("shape sat", dataset[1]["sat"].get_shape())
-    print("shape policy", dataset[1]["policy"].get_shape())
+    return dataset
+
+
+def eval_input_fn(params):
+    del params
+
+    dataset = make_dataset(FLAGS.test_file)
+    dataset = dataset.batch(FLAGS.batch_size, drop_remainder=True)
+    dataset = dataset.make_one_shot_iterator().get_next()
     return dataset
 
 
@@ -371,8 +394,11 @@ def main(argv):
       eval_batch_size=FLAGS.batch_size,
       predict_batch_size=FLAGS.batch_size,
       config=run_config)
+
+  estimator.train(input_fn=train_input_fn, max_steps=1000)
+  estimator.evaluate(input_fn=eval_input_fn, steps=100)
+
   # TPUEstimator.train *requires* a max_steps argument.
-  estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
   # TPUEstimator.evaluate *requires* a steps argument.
   # Note that the number of examples used during evaluation is
   # --eval_steps * --batch_size.
