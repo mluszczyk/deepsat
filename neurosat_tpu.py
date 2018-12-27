@@ -20,6 +20,8 @@ tf.flags.DEFINE_string("train_file", None, "Train file")
 tf.flags.DEFINE_string("test_file", None, "Test file")
 tf.flags.DEFINE_integer("batch_size", 1024, "Batch size")
 tf.flags.DEFINE_bool("tpu_enable_host_call", False, "Enable TPUEstimator host_call.")
+tf.flags.DEFINE_integer("level_number", 30, "Number of iterations.")
+tf.flags.DEFINE_bool("add_summaries", False, "Add TF summaries.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -61,7 +63,6 @@ DEFAULT_SETTINGS = {
     'LEARNING_RATE': 0.001,
     # 'CLAUSE_SIZE': 3,  # not applicable for graph network
     # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
-    'LEVEL_NUMBER': 1,
 }
 
 
@@ -108,7 +109,7 @@ class Graph:
         HIDDEN_ACTIVATION = settings["HIDDEN_ACTIVATION"]
         SAT_LOSS_WEIGHT = settings["SAT_LOSS_WEIGHT"]
         POLICY_LOSS_WEIGHT = settings["POLICY_LOSS_WEIGHT"]
-        LEVEL_NUMBER = settings["LEVEL_NUMBER"]
+        LEVEL_NUMBER = FLAGS.level_number
         EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
@@ -229,23 +230,25 @@ class Graph:
             self.level_loss = SAT_LOSS_WEIGHT * self.sat_loss + POLICY_LOSS_WEIGHT * self.policy_loss
             self.loss += self.level_loss
 
-            lvln = "_level_{}".format(level)
-            tf.summary.scalar("loss"+lvln, self.level_loss)
-            tf.summary.scalar("policy_loss"+lvln, self.policy_loss)
-            tf.summary.scalar("policy_error"+lvln, self.policy_error)
-            # tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
-            tf.summary.scalar("sat_loss"+lvln, self.sat_loss)
-            tf.summary.scalar("sat_error"+lvln, self.sat_error)
-            tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
+            if FLAGS.add_summaries:
+                lvln = "_level_{}".format(level)
+                tf.summary.scalar("loss"+lvln, self.level_loss)
+                tf.summary.scalar("policy_loss"+lvln, self.policy_loss)
+                tf.summary.scalar("policy_error"+lvln, self.policy_error)
+                # tf.summary.scalar("policy_top1_error"+lvln, self.policy_top1_error)
+                tf.summary.scalar("sat_loss"+lvln, self.sat_loss)
+                tf.summary.scalar("sat_error"+lvln, self.sat_error)
+                tf.summary.scalar("sat_fraction"+lvln, tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
-        # tf.summary.scalar("loss", self.loss)
-        tf.summary.scalar("policy_loss", self.policy_loss)
-        tf.summary.scalar("policy_error", self.policy_error)
-        # tf.summary.scalar("policy_top1_error", self.policy_top1_error)
-        tf.summary.scalar("sat_loss", self.sat_loss)
-        tf.summary.scalar("sat_error", self.sat_error)
-        tf.summary.scalar("sat_fraction",
-                           tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
+        if FLAGS.add_summaries:
+            # tf.summary.scalar("loss", self.loss)
+            tf.summary.scalar("policy_loss", self.policy_loss)
+            tf.summary.scalar("policy_error", self.policy_error)
+            # tf.summary.scalar("policy_top1_error", self.policy_top1_error)
+            tf.summary.scalar("sat_loss", self.sat_loss)
+            tf.summary.scalar("sat_error", self.sat_error)
+            tf.summary.scalar("sat_fraction",
+                              tf.reduce_sum(self.sat_labels) / tf.cast(batch_size, dtype=tf.float32))
 
 
 def model_fn(features, labels, mode, params):
