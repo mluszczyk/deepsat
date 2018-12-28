@@ -25,6 +25,7 @@ tf.flags.DEFINE_integer("level_number", 30, "Number of iterations.")
 tf.flags.DEFINE_bool("add_summaries", False, "Add TF summaries.")
 tf.flags.DEFINE_integer("variable_number", 8, "Variable number.")
 tf.flags.DEFINE_integer("clause_number", 80, "Clause number (maximal, to determine tensor shape).")
+tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -60,10 +61,6 @@ DEFAULT_SETTINGS = {
     # "PROCESSOR_NUM": None,  # defaults to all processors,
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
-
-    'LEARNING_RATE': 0.001,
-    # 'CLAUSE_SIZE': 3,  # not applicable for graph network
-    # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
 }
 
 
@@ -274,7 +271,7 @@ def model_fn(features, labels, mode, params):
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
-        optimizer = tf.train.AdamOptimizer(learning_rate=DEFAULT_SETTINGS["LEARNING_RATE"])
+        optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
 
         if FLAGS.use_tpu:
             optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
