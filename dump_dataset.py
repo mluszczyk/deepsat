@@ -3,7 +3,8 @@ import numpy as np
 
 import cnf_dataset
 from tqdm import tqdm
-
+import argparse
+import os
 
 def make_example(inputs, sat, policy):
     example = tf.train.Example(
@@ -24,19 +25,33 @@ def tf_serialize_example(sample):
 
 
 def main():
-    filename = "test.tfrecord"
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-j", "--job", required=True, help="the job identifier")
+    ap.add_argument("-c", "--complexity", required=True, type=int, default=30, help="the level of complexity of SR(n)")
+    ap.add_argument("-o", "--observations", required=True, type=int, default=1e4, help="the number of observations to be made")
+    args = vars(ap.parse_args())
+
+    job = args["job"]
+    complexity = args["complexity"]
+    dirname = "sr_{}".format(complexity)  
+    filename = "train_{}_sr_{}.tfrecord".format(job, complexity)
     options = {
-        "PROCESSOR_NUM": 80,
-        "CLAUSE_NUM": 80,
-        "VARIABLE_NUM": 8,
+        "PROCESSOR_NUM": 24,
+        "CLAUSE_NUM": 10*complexity,
+        "VARIABLE_NUM": complexity,
         "MIN_VARIABLE_NUM": 1,
         "BATCH_SIZE": 1,
         "SR_GENERATOR": True
     }
-    n_observations = 10000
+    n_observations = args["observations"]
+
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+        print("Created directory {}".format(dirname))
 
     with cnf_dataset.PoolDatasetGenerator(options) as generator, \
-            tf.python_io.TFRecordWriter(filename) as writer:
+            tf.python_io.TFRecordWriter(os.path.join(dirname,filename)) as writer:
 
         for _ in tqdm(range(n_observations)):
             sample_with_labels = generator.generate_batch()
