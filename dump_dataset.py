@@ -5,6 +5,7 @@ import cnf_dataset
 from tqdm import tqdm
 import argparse
 import os
+import random
 
 def make_example(inputs, sat, policy):
     example = tf.train.Example(
@@ -33,6 +34,9 @@ def main():
     args = vars(ap.parse_args())
 
     job = args["job"]
+    random.seed(int(job))
+    print("Set random seed to {}".format(int(job)))
+
     complexity = args["complexity"]
     dirname = "sr_{}".format(complexity)  
     filename = "train_{}_sr_{}.tfrecord".format(job, complexity)
