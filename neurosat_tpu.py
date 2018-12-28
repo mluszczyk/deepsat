@@ -16,12 +16,15 @@ tf.flags.DEFINE_bool("use_tpu", True, "Use TPUs rather than plain CPUs")
 tf.flags.DEFINE_integer("iterations", 100,
                         "Number of iterations per TPU training loop.")
 tf.flags.DEFINE_integer("train_steps", 1000, "Total number of training steps.")
+tf.flags.DEFINE_integer("test_steps", 5, "Total number of training steps.")
 tf.flags.DEFINE_string("train_file", None, "Train file")
 tf.flags.DEFINE_string("test_file", None, "Test file")
 tf.flags.DEFINE_integer("batch_size", 1024, "Batch size")
 tf.flags.DEFINE_bool("tpu_enable_host_call", False, "Enable TPUEstimator host_call.")
 tf.flags.DEFINE_integer("level_number", 30, "Number of iterations.")
 tf.flags.DEFINE_bool("add_summaries", False, "Add TF summaries.")
+tf.flags.DEFINE_integer("variable_number", 8, "Variable number.")
+tf.flags.DEFINE_integer("clause_number", 80, "Clause number (maximal, to determine tensor shape).")
 
 
 FLAGS = tf.flags.FLAGS
@@ -58,8 +61,6 @@ DEFAULT_SETTINGS = {
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
 
-    'VARIABLE_NUM': 8,
-    'CLAUSE_NUM': 80,
     'LEARNING_RATE': 0.001,
     # 'CLAUSE_SIZE': 3,  # not applicable for graph network
     # 'MIN_VARIABLE_NUM': 30,  # only needed for generation
@@ -207,9 +208,6 @@ class Graph:
             # zero out policy for test when UNSAT
             # requires sat_labels to be provided, so needs to be a separate tensor in order
             # for inference to work
-            print("batch size", batch_size)
-            print("sat labels", self.sat_labels.get_shape())
-            print("policy logits", self.policy_logits.get_shape())
             self.policy_logits_for_cmp = tf.reshape(self.sat_labels, [batch_size, 1, 1]) * self.policy_logits
 
             self.policy_loss = tf.losses.sigmoid_cross_entropy(
@@ -302,8 +300,8 @@ def dummy_sample():
     # Made just to fit the shape and to isolate actual data generation.
 
     sample_number = FLAGS.batch_size
-    variable_number = DEFAULT_SETTINGS["VARIABLE_NUM"]
-    clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
+    variable_number = FLAGS.variable_number
+    clause_num = FLAGS.clause_number
 
     features = np.asarray([[[[1, 0] for _ in range(clause_num)]
                             for _ in range(variable_number)]
@@ -319,8 +317,8 @@ def dummy_sample():
 def make_dataset(filename):
     batch_size = FLAGS.batch_size
 
-    variable_num = DEFAULT_SETTINGS["VARIABLE_NUM"]
-    clause_num = DEFAULT_SETTINGS["CLAUSE_NUM"]
+    variable_num = FLAGS.variable_number
+    clause_num = FLAGS.clause_number
 
     def parser(serialized_example):
         return tf.parse_single_example(
@@ -331,7 +329,8 @@ def make_dataset(filename):
                 'policy': tf.FixedLenFeature([variable_num, 2], tf.float32),
             })
 
-    dataset = tf.data.TFRecordDataset(filename)
+    dataset = tf.data.TFRecordDataset(tf.matching_files(filename),
+                                      compression_type='GZIP')
     dataset = dataset.map(parser, num_parallel_calls=batch_size)
     dataset = dataset.map(lambda x:
                           (x["inputs"], {"sat": x["sat"], "policy": x["policy"]}))
@@ -400,8 +399,11 @@ def main(argv):
       predict_batch_size=FLAGS.batch_size,
       config=run_config)
 
-  estimator.train(input_fn=train_input_fn, max_steps=1000)
-  estimator.evaluate(input_fn=eval_input_fn, steps=100)
+  if FLAGS.train_steps > 0:
+    estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
+
+  if FLAGS.test_steps > 0:
+    estimator.evaluate(input_fn=eval_input_fn, steps=FLAGS.test_steps)
 
   # TPUEstimator.train *requires* a max_steps argument.
   # TPUEstimator.evaluate *requires* a steps argument.
