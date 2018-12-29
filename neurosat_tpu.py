@@ -253,6 +253,12 @@ def model_fn(features, labels, mode, params):
 
     graph = Graph(DEFAULT_SETTINGS, features=features, labels=labels)
 
+    if FLAGS.tpu_enable_host_call:
+        host_call = host_call_ported.create_host_call(FLAGS.model_dir)
+    else:
+        host_call = None
+    host_call_ported.remove_summaries()
+
     if mode == tf.estimator.ModeKeys.EVAL:
         def metric_fn(sat_labels, sat_probabilities,
                       policy_labels, policy_probabilities):
@@ -269,7 +275,8 @@ def model_fn(features, labels, mode, params):
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode, loss=graph.loss, eval_metrics=(metric_fn, [
                 graph.sat_labels, tf.round(graph.sat_probabilities),
-                graph.policy_labels, tf.round(graph.policy_probabilities)]))
+                graph.policy_labels, tf.round(graph.policy_probabilities)]),
+            host_call=host_call)
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
@@ -279,12 +286,6 @@ def model_fn(features, labels, mode, params):
             optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
-
-        if FLAGS.tpu_enable_host_call:
-            host_call = host_call_ported.create_host_call(FLAGS.model_dir)
-        else:
-            host_call = None
-        host_call_ported.remove_summaries()
 
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode,
