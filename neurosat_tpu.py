@@ -26,6 +26,8 @@ tf.flags.DEFINE_bool("add_summaries", False, "Add TF summaries.")
 tf.flags.DEFINE_integer("variable_number", 8, "Variable number.")
 tf.flags.DEFINE_integer("clause_number", 80, "Clause number (maximal, to determine tensor shape).")
 tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
+tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
+tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -311,7 +313,7 @@ def dummy_sample():
     return features, sat_labels, policy_labels
 
 
-def make_dataset(filename):
+def make_dataset(filename, gzipped):
     batch_size = FLAGS.batch_size
 
     variable_num = FLAGS.variable_number
@@ -327,7 +329,9 @@ def make_dataset(filename):
             })
 
     dataset = tf.data.TFRecordDataset(tf.matching_files(filename),
-                                      compression_type='GZIP')
+                                      compression_type='GZIP'
+                                      if gzipped else ''
+                                      )
     dataset = dataset.map(parser, num_parallel_calls=batch_size)
     dataset = dataset.map(lambda x:
                           (x["inputs"], {"sat": x["sat"], "policy": x["policy"]}))
@@ -338,7 +342,7 @@ def make_dataset(filename):
 def train_input_fn(params):
     del params
 
-    dataset = make_dataset(FLAGS.train_file)
+    dataset = make_dataset(FLAGS.train_file, FLAGS.train_files_gzipped)
     dataset = dataset.batch(FLAGS.batch_size, drop_remainder=True)
     dataset = dataset.prefetch(4).cache().repeat()
     dataset = dataset.make_one_shot_iterator().get_next()
@@ -348,7 +352,7 @@ def train_input_fn(params):
 def eval_input_fn(params):
     del params
 
-    dataset = make_dataset(FLAGS.test_file)
+    dataset = make_dataset(FLAGS.test_file, FLAGS.test_files_gzipped)
     dataset = dataset.batch(FLAGS.batch_size, drop_remainder=True)
     dataset = dataset.make_one_shot_iterator().get_next()
     return dataset
