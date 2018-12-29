@@ -34,7 +34,11 @@ so execute the following command in order to use new dataset:
     
 #### Performance
 
-With 8 var dataset:
+With 30 var and level_number 30: ~6k steps/sec.
+
+With 8 var and level_number 30: ~30k steps/sec.
+
+With 8 var dataset and level_number 0:
 
     INFO:tensorflow:global_step/sec: 294.272
     INFO:tensorflow:examples/sec: 301335
