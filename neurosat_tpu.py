@@ -213,6 +213,7 @@ class Graph:
                 self.policy_labels, self.policy_logits_for_cmp)
             self.policy_probabilities = tf.sigmoid(self.policy_logits, name='policy_prob')
             self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
+            self.policy_weights = tf.reshape(self.sat_labels, [batch_size, 1, 1])
 
             self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
             self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
@@ -261,21 +262,21 @@ def model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.EVAL:
         def metric_fn(sat_labels, sat_probabilities,
-                      policy_labels, policy_probabilities):
+                      policy_labels, policy_probabilities, policy_weights):
             return {
                 'sat_error': tf.metrics.mean_absolute_error(
                     labels=sat_labels,
                     predictions=sat_probabilities),
-                # policy_error has wrong normalisation, look at policy_error scalar!
                 'policy_error': tf.metrics.mean_absolute_error(
                     labels=policy_labels,
-                    predictions=policy_probabilities)
+                    predictions=policy_probabilities,
+                    weights=policy_weights)
             }
 
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode, loss=graph.loss, eval_metrics=(metric_fn, [
                 graph.sat_labels, tf.round(graph.sat_probabilities),
-                graph.policy_labels, tf.round(graph.policy_probabilities)]),
+                graph.policy_labels, tf.round(graph.policy_probabilities), graph.policy_weights]),
             host_call=host_call)
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
