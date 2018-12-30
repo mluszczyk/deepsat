@@ -132,6 +132,9 @@ class Graph:
                 tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
                 [batch_size, clause_num, 1])
 
+        self.sat_list = []  # sat prediction level by level (rounded)
+        self.policy_list = []  # policy prediction level by level (rounded)
+
         for level in range(LEVEL_NUMBER+1):
             if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
@@ -214,9 +217,11 @@ class Graph:
             self.policy_probabilities = tf.sigmoid(self.policy_logits, name='policy_prob')
             self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
             self.policy_weights = tf.reshape(self.sat_labels, [batch_size, 1, 1])
+            self.policy_list.append(tf.round(self.policy_probabilities_for_cmp))
 
             self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
             self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
+            self.sat_list.append(tf.round(self.sat_probabilities))
 
             # we do not want to count unsat into policy_error
             self.policy_error = tf.reduce_sum(tf.abs(
@@ -261,22 +266,27 @@ def model_fn(features, labels, mode, params):
     host_call_ported.remove_summaries()
 
     if mode == tf.estimator.ModeKeys.EVAL:
-        def metric_fn(sat_labels, sat_probabilities,
-                      policy_labels, policy_probabilities, policy_weights):
-            return {
-                'sat_error': tf.metrics.mean_absolute_error(
-                    labels=sat_labels,
-                    predictions=sat_probabilities),
-                'policy_error': tf.metrics.mean_absolute_error(
-                    labels=policy_labels,
-                    predictions=policy_probabilities,
-                    weights=policy_weights)
-            }
+        def metric_fn(sat_labels, policy_labels, policy_weights, *args):
+            metrics = {}
+            for num, (sat, policy) in enumerate(zip(args[0::2], args[1::2])):
+                leveln = str(num)
+                metrics.update({
+                    'sat_error_' + leveln: tf.metrics.mean_absolute_error(
+                        labels=sat_labels,
+                        predictions=sat),
+                    'policy_error_' + leveln: tf.metrics.mean_absolute_error(
+                        labels=policy_labels,
+                        predictions=policy,
+                        weights=policy_weights)
+                })
+            return metrics
 
         return tf.contrib.tpu.TPUEstimatorSpec(
             mode, loss=graph.loss, eval_metrics=(metric_fn, [
-                graph.sat_labels, tf.round(graph.sat_probabilities),
-                graph.policy_labels, tf.round(graph.policy_probabilities), graph.policy_weights]),
+                graph.sat_labels,
+                graph.policy_labels, graph.policy_weights] + [
+                x for t in zip(graph.sat_list, graph.policy_list) for x in t
+            ]),
             host_call=host_call)
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
