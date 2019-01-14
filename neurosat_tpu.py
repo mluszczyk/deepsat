@@ -30,6 +30,7 @@ tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
+tf.flags.DEFINE_bool("attention", True, "Should attention be used.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -99,6 +100,7 @@ class Graph:
         assert_shape(clauses_per_variable, [BATCH_SIZE, None])
 
         positive_connections, negative_connections = (tf.squeeze(conn, axis=3) for conn in tf.split(self.inputs, 2, axis=3))
+        all_connections = tf.concat([positive_connections, negative_connections], axis=1)
         assert_shape(positive_connections, [BATCH_SIZE, None, None])
         assert_shape(negative_connections, [BATCH_SIZE, None, None])
 
@@ -113,6 +115,33 @@ class Graph:
         POLICY_LOSS_WEIGHT = settings["POLICY_LOSS_WEIGHT"]
         LEVEL_NUMBER = FLAGS.level_number
         EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
+        ATTENTION = FLAGS.attention
+
+        def basic_MLP(source, name, target_dimension=None, hidden_layers=None, end_activation=None):
+            if hidden_layers is None:
+                hidden_layers = HIDDEN_LAYERS
+            if target_dimension is None:
+                target_dimension = EMBEDDING_SIZE
+            last_hidden = source
+            for index, size in enumerate(hidden_layers):
+                last_hidden = tf.layers.dense(
+                    last_hidden, size,
+                    activation=HIDDEN_ACTIVATION,
+                    name='{}_hidden_{}'.format(name, index),
+                    reuse=tf.AUTO_REUSE)
+            return tf.layers.dense(last_hidden, target_dimension, activation=end_activation, name='{}'.format(name),
+                                   reuse=tf.AUTO_REUSE)
+
+        def aggregate(Q, K, V, conn):
+            if ATTENTION:
+                QtimesK = tf.matmul(Q, K, transpose_b=True)
+                norm_weights = tf.multiply(tf.sigmoid(QtimesK), conn)
+            else:
+                unnorm_weights = conn
+                norm_weights = tf.div(unnorm_weights,
+                                      1.0 + tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
+            aggr_V = tf.matmul(norm_weights, V)
+            return aggr_V
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
             initial_var_embedding = tf.get_variable(
@@ -142,56 +171,55 @@ class Graph:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
-                clause_preembeddings = tf.concat([
-                    tf.divide((
-                        tf.matmul(positive_connections, positive_literal_embeddings, transpose_a=True) +
-                        tf.matmul(negative_connections, negative_literal_embeddings, transpose_a=True)
-                    ), tf.expand_dims(variables_per_clause, -1) + 1.0),
-                    clause_embeddings], axis=-1)
-                assert_shape(clause_preembeddings,
-                             [BATCH_SIZE, None, EMBEDDING_SIZE*2])
-                last_hidden = clause_preembeddings
-                for index, size in enumerate(HIDDEN_LAYERS):
-                    last_hidden = tf.layers.dense(
-                        last_hidden, size,
-                        activation=HIDDEN_ACTIVATION, name='hidden_clause_{}'.format(index),
-                        reuse=reuse)
-                clause_embeddings = tf.layers.dense(
-                    last_hidden, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='clause_embeddings', reuse=reuse)
-                assert_shape(clause_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
+                # clause preembeddings
+                cls4cls_V = basic_MLP(clause_embeddings, 'cls4cls_V')
 
-                # clause -> var
-                positive_literal_preembeddings = tf.concat([
-                    tf.divide((
-                            tf.matmul(positive_connections, clause_embeddings)
-                    ), tf.expand_dims(clauses_per_variable, -1) + 1.0),
-                    positive_literal_embeddings,
-                    negative_literal_embeddings], axis=-1)
-                negative_literal_preembeddings = tf.concat([
-                    tf.divide((
-                        tf.matmul(negative_connections, clause_embeddings)
-                    ), tf.expand_dims(clauses_per_variable, -1) + 1.0),
-                    negative_literal_embeddings,
-                    positive_literal_embeddings], axis=-1)
-                assert_shape(positive_literal_preembeddings, [BATCH_SIZE, None, EMBEDDING_SIZE * 3])
-                assert_shape(negative_literal_preembeddings, [BATCH_SIZE, None, EMBEDDING_SIZE * 3])
-                last_hidden_positive = positive_literal_preembeddings
-                last_hidden_negative = negative_literal_preembeddings
-                for index, size in enumerate(HIDDEN_LAYERS):
-                    last_hidden_positive = tf.layers.dense(
-                        last_hidden_positive, size,
-                        activation=HIDDEN_ACTIVATION,
-                        name='hidden_var_{}'.format(index),
-                        reuse=reuse)
-                    last_hidden_negative = tf.layers.dense(
-                        last_hidden_negative, size,
-                        activation=HIDDEN_ACTIVATION,
-                        name='hidden_var_{}'.format(index),
-                        reuse=reuse)
-                positive_literal_embeddings = tf.layers.dense(
-                    last_hidden_positive, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='var_embeddings', reuse=reuse)
-                negative_literal_embeddings = tf.layers.dense(
-                    last_hidden_negative, EMBEDDING_SIZE, activation=EMBED_ACTIVATION, name='var_embeddings', reuse=reuse)
+                if ATTENTION:
+                    cls4lit_Q = basic_MLP(clause_embeddings, 'cls4lit_Q')
+                else:
+                    cls4lit_Q = None
+
+                all_literal_embeddings = tf.concat([positive_literal_embeddings, negative_literal_embeddings],
+                                                   axis=1)
+                if ATTENTION:
+                    lit4cls_K = basic_MLP(all_literal_embeddings, 'lit4cls_K')
+                else:
+                    lit4cls_K = None
+                lit4cls_V = basic_MLP(all_literal_embeddings, 'lit4cls_V')
+
+                lit4cls_aggr_V = aggregate(cls4lit_Q, lit4cls_K, lit4cls_V,
+                                           tf.transpose(all_connections, perm=[0, 2, 1]))
+
+                clause_preembeddings = tf.concat([cls4cls_V, lit4cls_aggr_V], axis=-1)
+
+                # literal preembeddings
+                pos4pos_V = basic_MLP(positive_literal_embeddings, 'lit4lit_V')
+                neg4neg_V = basic_MLP(negative_literal_embeddings, 'lit4lit_V')
+
+                pos4neg_V = basic_MLP(positive_literal_embeddings, 'neg4neg_V')
+                neg4pos_V = basic_MLP(negative_literal_embeddings, 'neg4neg_V')
+
+                if ATTENTION:
+                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'lit4cls_Q')
+                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'lit4cls_Q')
+
+                    cls4lit_K = basic_MLP(clause_embeddings, 'cls4lit_K')
+                else:
+                    pos4cls_Q, neg4cls_Q, cls4lit_K = None, None, None
+                cls4lit_V = basic_MLP(clause_embeddings, 'cls4lit_V')
+
+                cls4pos_aggr_V = aggregate(pos4cls_Q, cls4lit_K, cls4lit_V, positive_connections)
+                cls4neg_aggr_V = aggregate(neg4cls_Q, cls4lit_K, cls4lit_V, negative_connections)
+
+                positive_literal_preembeddings = tf.concat([pos4pos_V, neg4pos_V, cls4pos_aggr_V], axis=-1)
+                negative_literal_preembeddings = tf.concat([neg4neg_V, pos4neg_V, cls4neg_aggr_V], axis=-1)
+
+                clause_embeddings = basic_MLP(clause_preembeddings, 'cls_pre2emb', end_activation=EMBED_ACTIVATION)
+
+                positive_literal_embeddings = basic_MLP(
+                    positive_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                negative_literal_embeddings = basic_MLP(
+                    negative_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
             assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
             assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
