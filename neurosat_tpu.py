@@ -12,6 +12,7 @@ tf.flags.DEFINE_string(
     "url.")
 
 tf.flags.DEFINE_string("model_dir", None, "Estimator model_dir")
+tf.flags.DEFINE_string("export_dir", None, "Export model_dir dir")
 tf.flags.DEFINE_bool("use_tpu", True, "Use TPUs rather than plain CPUs")
 tf.flags.DEFINE_integer("iterations", 100,
                         "Number of iterations per TPU training loop.")
@@ -28,6 +29,7 @@ tf.flags.DEFINE_integer("clause_number", 80, "Clause number (maximal, to determi
 tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
+tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
 
 
 FLAGS = tf.flags.FLAGS
@@ -303,6 +305,13 @@ def model_fn(features, labels, mode, params):
             loss=loss,
             train_op=train_op,
             host_call=host_call)
+    elif mode == tf.estimator.ModeKeys.PREDICT:
+        return tf.contrib.tpu.TPUEstimatorSpec(
+            mode=mode,
+            predictions={
+                'sat_probabilities': graph.sat_probabilities,
+                'policy_probabilities': graph.policy_probabilities
+            })
     else:
         assert False
 
@@ -385,6 +394,12 @@ def dummy_train_input_fn(params):
     return features, labels
 
 
+def serving_input_receiver_fn():
+    feature = tf.placeholder(tf.float32, shape=[None, None, None, 2])
+
+    return tf.estimator.export.TensorServingInputReceiver(feature, feature)
+
+
 def main(argv):
   del argv  # Unused.
   tf.logging.set_verbosity(tf.logging.INFO)
@@ -415,6 +430,9 @@ def main(argv):
   if FLAGS.train_steps > 0:
     estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
 
+  if FLAGS.export_model:
+    estimator.export_saved_model(FLAGS.export_dir, serving_input_receiver_fn)
+
   if FLAGS.test_steps > 0:
     estimator.evaluate(input_fn=eval_input_fn, steps=FLAGS.test_steps)
 
@@ -423,7 +441,6 @@ def main(argv):
   # Note that the number of examples used during evaluation is
   # --eval_steps * --batch_size.
   # So if you change --batch_size then change --eval_steps too.
-
 
 
 if __name__ == "__main__":
