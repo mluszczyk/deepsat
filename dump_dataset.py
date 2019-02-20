@@ -7,6 +7,7 @@ import argparse
 import os
 import random
 
+
 def make_example(inputs, sat, policy):
     example = tf.train.Example(
         features=tf.train.Features(feature={

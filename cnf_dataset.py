@@ -4,10 +4,8 @@ import collections
 import multiprocessing
 
 from cnf import get_sats_SR, get_random_kcnfs
-from timed import timed
 
 
-@timed
 def gen_labels(variable_num, pool, cnfs):
     sat_labels = pool.map(satisfiable, cnfs)
 
@@ -24,7 +22,6 @@ def gen_labels(variable_num, pool, cnfs):
     return sat_labels, policy_labels
 
 
-@timed
 def gen_cnfs_with_labels(options, pool):
     if options['SR_GENERATOR']:
         cnfs = get_sats_SR(options['BATCH_SIZE'], options['MIN_VARIABLE_NUM'], options['CLAUSE_NUM'],

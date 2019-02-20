@@ -1,5 +1,0 @@
-name: Neuro SAT
-project: Deep SAT
-# host: kdmi.neptune.deepsense.io
-# port: 443
-executable: neurosat_policy.py
