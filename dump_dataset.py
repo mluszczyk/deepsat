@@ -34,8 +34,8 @@ def main():
     args = vars(ap.parse_args())
 
     job = args["job"]
-    random.seed(int(job))
-    print("Set random seed to {}".format(int(job)))
+    random.seed(int(job)+1000)
+    print("Set random seed to {}".format(int(job)+1000))
 
     complexity = args["complexity"]
     dirname = "sr_{}".format(complexity)  
