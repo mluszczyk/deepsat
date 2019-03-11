@@ -453,7 +453,8 @@ def main(argv):
       train_batch_size=FLAGS.batch_size,
       eval_batch_size=FLAGS.batch_size,
       predict_batch_size=FLAGS.batch_size,
-      config=run_config)
+      config=run_config,
+      export_to_tpu=False)
 
   if FLAGS.train_steps > 0:
     estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
