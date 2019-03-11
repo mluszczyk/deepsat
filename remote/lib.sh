@@ -5,6 +5,7 @@ function rsync_project {
 }
 
 function setup_instance {
+    ssh $INSTANCE -- "sudo apt-get update"
     ssh $INSTANCE -- "sudo apt-get -y install rsync python3-venv gcc python3-dev tmux less g++ make patch zlib1g-dev"
     ssh $INSTANCE -- "mkdir -p deepsat/"
 
