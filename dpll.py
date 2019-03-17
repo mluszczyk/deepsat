@@ -28,6 +28,17 @@ class MostCommonVarDPLL(DPLL):
         return counter.most_common(1)[0][0]
 
 
+class JeroslowWangDPLL(DPLL):
+    def suggest(self, cnf: CNF):
+        counter = Counter()
+
+        for clause in cnf.clauses:
+            for l in clause:
+                counter[l] += 2. ** (-len(clause))
+
+        return counter.most_common(1)[0][0]
+
+
 def main():
     s = CNF([
         [1, 2],
