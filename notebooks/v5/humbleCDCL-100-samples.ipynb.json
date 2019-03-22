@@ -1,0 +1,743 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "INFO:tensorflow:Restoring parameters from gs://neural-guidance-tensorflow/export/0315_series5a_sr50_l40_aTrue_tng-tpu-02/1552773431/variables/variables\n"
+     ]
+    }
+   ],
+   "source": [
+    "import tensorflow as tf\n",
+    "from tensorflow.contrib import predictor\n",
+    "\n",
+    "export_dir = \"gs://neural-guidance-tensorflow/export/0315_series5a_sr50_l40_aTrue_tng-tpu-02/1552773431/\"\n",
+    "predict_fn = predictor.from_saved_model(export_dir)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from matplotlib import pyplot as plt\n",
+    "import numpy as np\n",
+    "import random"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import tqdm"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from time import time"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import sys \n",
+    "sys.path.insert(0,'../..')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "from cnf_dataset import clauses_to_matrix\n",
+    "from dpll import DPLL, RandomClauseDPLL, MostCommonVarDPLL, RandomVarDPLL, JeroslowWangDPLL\n",
+    "import cdcl\n",
+    "CDCL = cdcl.CDCL\n",
+    "from cnf import get_random_kcnf, CNF, get_sats_SR, get_pos_SR, get_sat_SR, get_random_sat_kcnf\n",
+    "from tqdm import tqdm\n",
+    "from collections import Counter"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "LIMIT_RUNS = 1000"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[1, -2]"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "CDCL().run(CNF([[-1, -2], [+1, -2], [+1, +2]]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[1, -2]"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "JeroslowWangDPLL().run(CNF([[-1, -2], [+1, -2], [+1, +2]]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Generated\n",
+      "0.0866234302520752\n",
+      "0.10194969177246094\n"
+     ]
+    }
+   ],
+   "source": [
+    "cnf = get_pos_SR(15, 15, 2000)\n",
+    "print(\"Generated\")\n",
+    "# print(cnf)\n",
+    "start = time()\n",
+    "CDCL().run(cnf)\n",
+    "end = time()\n",
+    "print(end-start)\n",
+    "start = time()\n",
+    "DPLL().run(cnf)\n",
+    "end = time()\n",
+    "print(end-start)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import math\n",
+    "from collections import defaultdict\n",
+    "\n",
+    "def jw(clauses):\n",
+    "    score = defaultdict(int)\n",
+    "\n",
+    "    for clause in clauses:\n",
+    "        for l in clause:\n",
+    "            score[l] += 2. ** (-len(clause))\n",
+    "\n",
+    "    return max(score, key=score.get)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "-2"
+      ]
+     },
+     "execution_count": 12,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "jw([[-1, -2], [+1, -2]])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.set_printoptions(precision=3, suppress=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "import tensorflow as tf\n",
+    "import os\n",
+    "\n",
+    "BATCH_SIZE = 1"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "VERBOSE = False\n",
+    "TIMEOUT = 10000\n",
+    "cdcl.VERBOSE = VERBOSE\n",
+    "cdcl.TIMEOUT = TIMEOUT\n",
+    "\n",
+    "class GraphBasedCDCL(CDCL):\n",
+    "    def suggest(self, input_cnf: CNF):\n",
+    "        clause_num = len(input_cnf.clauses)\n",
+    "        var_num = max(input_cnf.vars)\n",
+    "        inputs = np.asarray([clauses_to_matrix(input_cnf.clauses, clause_num, var_num)] * BATCH_SIZE)\n",
+    "        \n",
+    "        output = predict_fn({\"input\": inputs})\n",
+    "        policy_probs = output['policy_probabilities']\n",
+    "        sat_prob = output['sat_probabilities'][0]\n",
+    "        \n",
+    "        #print(\"CNF:\", input_cnf, end=' ', file=logfile)\n",
+    "        #print('cnf_clauses[0]', input_cnf.clauses, end=' ', file=logfile)\n",
+    "        #print(\"probs:\\n\",  policy_probs[0], end='\\n', file=logfile)\n",
+    "        \n",
+    "        best_prob = 0.0\n",
+    "        best_svar = None\n",
+    "        for var in input_cnf.vars:\n",
+    "            for svar in [var, -var]:\n",
+    "                svar_prob = policy_probs[0][var-1][0 if svar > 0 else 1]\n",
+    "                #print(svar, svar_prob, best_prob, file=logfile)\n",
+    "                if svar_prob > best_prob:\n",
+    "                    best_prob = svar_prob\n",
+    "                    best_svar = svar\n",
+    "        #print(\"best_svar:\", best_svar, file=logfile)\n",
+    "        if VERBOSE:\n",
+    "            print(\"Chosen neural\", best_svar)\n",
+    "            print(\"Pred SAT prob\", sat_prob)\n",
+    "        return best_svar\n",
+    "\n",
+    "class HumbleGraphBasedCDCL(CDCL):\n",
+    "    def suggest(self, input_cnf: CNF):\n",
+    "        clause_num = len(input_cnf.clauses)\n",
+    "        var_num = max(input_cnf.vars)\n",
+    "        inputs = np.asarray([clauses_to_matrix(input_cnf.clauses, clause_num, var_num)] * BATCH_SIZE)\n",
+    "        \n",
+    "        output = predict_fn({\"input\": inputs})\n",
+    "        policy_probs = output['policy_probabilities']\n",
+    "        sat_prob = output['sat_probabilities'][0]\n",
+    "        \n",
+    "        #print(\"CNF:\", input_cnf, end=' ', file=logfile)\n",
+    "        #print('cnf_clauses[0]', input_cnf.clauses, end=' ', file=logfile)\n",
+    "        #print(\"probs:\\n\",  policy_probs[0], end='\\n', file=logfile)\n",
+    "        \n",
+    "        best_prob = 0.0\n",
+    "        best_svar = None\n",
+    "        for var in input_cnf.vars:\n",
+    "            for svar in [var, -var]:\n",
+    "                svar_prob = policy_probs[0][var-1][0 if svar > 0 else 1]\n",
+    "                #print(svar, svar_prob, best_prob, file=logfile)\n",
+    "                if svar_prob > best_prob:\n",
+    "                    best_prob = svar_prob\n",
+    "                    best_svar = svar\n",
+    "        #print(\"best_svar:\", best_svar, file=logfile)\n",
+    "        if VERBOSE:\n",
+    "            print(\"Chosen neural\", best_svar)\n",
+    "            print(\"Pred SAT prob\", sat_prob)\n",
+    "        if sat_prob < 0.3:\n",
+    "            # Overwriting with JW\n",
+    "            best_svar = jw(input_cnf.clauses)\n",
+    "            if VERBOSE:\n",
+    "                print(\"Choosing JW\", best_svar)\n",
+    "        #if sat_prob < 0.02:\n",
+    "        #    print(\"Aborting, prob too small\")\n",
+    "        #    raise ValueError(\"Prob too small\")\n",
+    "        return best_svar\n",
+    "\n",
+    "class JeroslawCDCL(CDCL):\n",
+    "    def suggest(self, cnf: CNF):\n",
+    "        res = jw(cnf.clauses)\n",
+    "        if VERBOSE:\n",
+    "            print(\"Chosen JW\", res)\n",
+    "        return res"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "HumbleGraphBasedCDCL().run(CNF([[-1, -2], [+1, +3], [+2, -3], [+3, -2], [+1, -2], [2, 3]]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def compute_steps(sats, cdcl_cls):\n",
+    "    steps = []\n",
+    "    solved = 0\n",
+    "    for sat in tqdm.tqdm(sats):\n",
+    "        cdcl = cdcl_cls()\n",
+    "        res = cdcl.run(sat)\n",
+    "        # assert res is not None\n",
+    "        if res is not None:\n",
+    "            steps.append(cdcl.number_of_runs)\n",
+    "            solved += 1\n",
+    "    print(\"Within {} steps solved {} problems out of {}\".format(LIMIT_RUNS, solved, len(sats)))\n",
+    "    return steps"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def compute_and_print_steps(sats, dpll_cls):\n",
+    "    try:\n",
+    "        print(\"\")\n",
+    "        print(\"Results of {}\".format(dpll_cls.__name__))\n",
+    "        steps = compute_steps(sats, dpll_cls)\n",
+    "        print(\"#Sats: {}; avg step: {:.2f}; stdev step: {:.2f}\".format(\n",
+    "            len(steps), np.mean(steps), np.std(steps)))\n",
+    "        print(\"Table: {}\".format(steps))\n",
+    "    except Exception as e:\n",
+    "        print(e)\n",
+    "        print(\"Timeout!\", TIMEOUT, \"steps\")\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def print_all(s, n, m, light=False, seed=1, to_test=[HumbleGraphBasedCDCL, JeroslawCDCL]):\n",
+    "    print(\"Starting...\")\n",
+    "    # def get_sats_SR(sample_number, min_variable_number, clause_number, max_variable_number=None):\n",
+    "    global S, N, M\n",
+    "    S = s\n",
+    "    N = n # number of clauses\n",
+    "    M = m # number of variables\n",
+    "    \n",
+    "    MAX_TRIES = 100000\n",
+    "    sats = []\n",
+    "    \n",
+    "    random.seed(seed)\n",
+    "    np.random.seed(seed)\n",
+    "    \n",
+    "    for index in range(MAX_TRIES):\n",
+    "        if len(sats) >= S:\n",
+    "            break\n",
+    "        sat = get_pos_SR(M, M, N)\n",
+    "        # if DPLL().run(sat) is not None:\n",
+    "        sats.append(sat)\n",
+    "    assert len(sats) == S\n",
+    "    # sats = get_sats_SR(S,M,N)\n",
+    "    # for sat in sats:\n",
+    "    #    print(sat)\n",
+    "    # assert len(sats) == S\n",
+    "    print(\"We have generated {} formulas\".format(len(sats)))\n",
+    "    # compute_and_print_steps(sats, DPLL)\n",
+    "    # compute_and_print_steps(sats, SimplifiedGraphBasedDPLL)\n",
+    "    \n",
+    "    \n",
+    "    # compute_and_print_steps(sats, SimplifiedMostCommonDPLL)\n",
+    "    # compute_and_print_steps(sats, NormalizedMostCommonDPLL)\n",
+    "    \n",
+    "    #compute_and_print_steps(sats, GraphBasedCDCL)\n",
+    "    for method in to_test:\n",
+    "        compute_and_print_steps(sats, method)\n",
+    "    #logfile.flush()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#print_all(10, 200, 50)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Starting...\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "We have generated 100 formulas\n",
+      "\n",
+      "Results of HumbleGraphBasedCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [06:14<00:00,  4.28s/it]\n",
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 34.47; stdev step: 43.16\n",
+      "Table: [11, 17, 11, 20, 17, 41, 14, 15, 18, 25, 158, 56, 13, 10, 11, 13, 6, 19, 157, 16, 35, 158, 39, 17, 14, 14, 10, 17, 19, 13, 17, 14, 83, 13, 13, 17, 13, 18, 24, 18, 21, 15, 16, 28, 29, 12, 8, 14, 12, 11, 215, 17, 15, 20, 9, 23, 19, 217, 22, 14, 8, 9, 20, 144, 17, 16, 15, 40, 14, 29, 23, 24, 18, 12, 18, 70, 71, 19, 45, 13, 52, 12, 13, 16, 96, 18, 14, 13, 14, 131, 39, 106, 104, 92, 18, 15, 14, 12, 12, 80]\n",
+      "\n",
+      "Results of JeroslawCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [00:58<00:00,  1.15it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 41.19; stdev step: 29.28\n",
+      "Table: [51, 79, 58, 11, 11, 36, 50, 45, 25, 42, 18, 52, 54, 9, 16, 15, 20, 25, 70, 51, 21, 41, 35, 27, 48, 17, 30, 12, 45, 11, 33, 26, 57, 27, 18, 34, 14, 68, 70, 14, 21, 45, 17, 20, 28, 60, 42, 12, 29, 9, 13, 15, 9, 20, 43, 120, 46, 103, 14, 10, 12, 35, 109, 106, 13, 28, 21, 56, 45, 47, 74, 85, 27, 30, 22, 103, 92, 17, 45, 27, 63, 15, 26, 13, 81, 28, 14, 63, 18, 157, 45, 67, 73, 102, 16, 42, 69, 85, 27, 59]\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_all(100, 1000, 40)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Starting...\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "We have generated 100 formulas\n",
+      "\n",
+      "Results of HumbleGraphBasedCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [12:28<00:00, 10.91s/it]\n",
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 56.71; stdev step: 67.96\n",
+      "Table: [14, 10, 25, 31, 17, 16, 24, 20, 21, 13, 24, 21, 254, 90, 18, 103, 160, 22, 203, 148, 44, 24, 15, 21, 16, 25, 32, 29, 24, 24, 15, 14, 14, 13, 23, 168, 29, 65, 16, 46, 24, 63, 18, 54, 22, 18, 17, 56, 157, 17, 16, 23, 14, 72, 12, 204, 33, 264, 22, 22, 19, 41, 12, 15, 16, 12, 280, 16, 206, 22, 109, 22, 20, 16, 24, 16, 135, 292, 92, 12, 152, 161, 12, 28, 85, 27, 16, 9, 17, 16, 23, 19, 210, 33, 14, 115, 139, 81, 17, 101]\n",
+      "\n",
+      "Results of JeroslawCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [02:23<00:00,  1.50s/it]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 71.46; stdev step: 58.22\n",
+      "Table: [20, 12, 110, 46, 59, 123, 58, 14, 115, 16, 25, 77, 175, 116, 288, 112, 85, 172, 19, 58, 40, 25, 23, 13, 25, 32, 102, 41, 229, 36, 40, 22, 11, 40, 20, 170, 108, 38, 39, 21, 87, 84, 79, 66, 28, 216, 62, 133, 260, 71, 13, 30, 8, 79, 19, 48, 70, 24, 19, 13, 111, 20, 26, 45, 66, 11, 34, 15, 111, 26, 19, 36, 17, 74, 132, 50, 102, 159, 144, 12, 137, 125, 41, 113, 123, 33, 75, 99, 102, 17, 61, 83, 155, 164, 38, 94, 143, 16, 54, 79]\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_all(100, 1000, 50)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Starting...\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "We have generated 100 formulas\n",
+      "\n",
+      "Results of HumbleGraphBasedCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [40:59<00:00, 24.28s/it] \n",
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 142.73; stdev step: 212.65\n",
+      "Table: [20, 19, 18, 163, 18, 155, 36, 661, 23, 107, 15, 256, 847, 543, 463, 26, 23, 443, 33, 27, 19, 45, 230, 29, 31, 28, 303, 19, 130, 134, 17, 398, 293, 480, 23, 26, 21, 32, 34, 25, 37, 351, 61, 30, 25, 26, 17, 479, 24, 180, 170, 29, 27, 25, 16, 76, 16, 23, 25, 22, 22, 103, 28, 279, 22, 30, 1174, 132, 69, 20, 55, 254, 28, 313, 28, 25, 826, 39, 12, 38, 30, 16, 23, 290, 101, 24, 543, 19, 143, 24, 30, 110, 62, 119, 302, 745, 23, 145, 85, 70]\n",
+      "\n",
+      "Results of JeroslawCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 100/100 [06:53<00:00,  2.70s/it]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Within 1000 steps solved 100 problems out of 100\n",
+      "#Sats: 100; avg step: 139.65; stdev step: 121.14\n",
+      "Table: [137, 174, 27, 117, 282, 332, 98, 142, 241, 378, 19, 417, 81, 246, 313, 17, 114, 105, 50, 35, 143, 43, 290, 106, 18, 41, 142, 86, 104, 42, 231, 295, 80, 478, 138, 59, 313, 24, 116, 26, 217, 322, 16, 106, 98, 64, 26, 391, 206, 175, 209, 26, 31, 172, 61, 111, 24, 170, 17, 279, 99, 225, 24, 64, 23, 561, 409, 45, 40, 195, 16, 409, 25, 190, 32, 15, 73, 17, 93, 117, 152, 238, 76, 359, 173, 27, 188, 26, 154, 37, 156, 39, 111, 134, 34, 16, 262, 183, 72, 35]\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_all(100, 2000, 60)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Starting...\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "  0%|          | 0/100 [00:00<?, ?it/s]"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "We have generated 100 formulas\n",
+      "\n",
+      "Results of HumbleGraphBasedCDCL\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      " 40%|████      | 40/100 [48:04<21:07, 21.13s/it]   "
+     ]
+    },
+    {
+     "ename": "KeyboardInterrupt",
+     "evalue": "",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m                         Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-31-daa3916a0fc2>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mprint_all\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;36m100\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m2000\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m70\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m<ipython-input-19-12eafe7cf494>\u001b[0m in \u001b[0;36mprint_all\u001b[0;34m(s, n, m, light, seed, to_test)\u001b[0m\n\u001b[1;32m     34\u001b[0m     \u001b[0;31m#compute_and_print_steps(sats, GraphBasedCDCL)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     35\u001b[0m     \u001b[0;32mfor\u001b[0m \u001b[0mmethod\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mto_test\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 36\u001b[0;31m         \u001b[0mcompute_and_print_steps\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msats\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mmethod\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     37\u001b[0m     \u001b[0;31m#logfile.flush()\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m<ipython-input-18-2014db3ca346>\u001b[0m in \u001b[0;36mcompute_and_print_steps\u001b[0;34m(sats, dpll_cls)\u001b[0m\n\u001b[1;32m      3\u001b[0m         \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      4\u001b[0m         \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"Results of {}\"\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mformat\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mdpll_cls\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m__name__\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 5\u001b[0;31m         \u001b[0msteps\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcompute_steps\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msats\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mdpll_cls\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      6\u001b[0m         print(\"#Sats: {}; avg step: {:.2f}; stdev step: {:.2f}\".format(\n\u001b[1;32m      7\u001b[0m             len(steps), np.mean(steps), np.std(steps)))\n",
+      "\u001b[0;32m<ipython-input-17-9fb2f15b299c>\u001b[0m in \u001b[0;36mcompute_steps\u001b[0;34m(sats, cdcl_cls)\u001b[0m\n\u001b[1;32m      4\u001b[0m     \u001b[0;32mfor\u001b[0m \u001b[0msat\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mtqdm\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtqdm\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msats\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m         \u001b[0mcdcl\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcdcl_cls\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 6\u001b[0;31m         \u001b[0mres\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcdcl\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrun\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msat\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      7\u001b[0m         \u001b[0;31m# assert res is not None\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      8\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0mres\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mnot\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36mrun\u001b[0;34m(self, cnf)\u001b[0m\n\u001b[1;32m     17\u001b[0m         \u001b[0mraw_solver\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mCDCLRawSolver\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcnf\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     18\u001b[0m         \u001b[0mraw_solver\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0msuggest\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0msuggest\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 19\u001b[0;31m         \u001b[0msolution\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mraw_solver\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrun\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     20\u001b[0m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mnumber_of_runs\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mraw_solver\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mnumber_of_runs\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     21\u001b[0m         \u001b[0;32mreturn\u001b[0m \u001b[0msolution\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36mrun\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m     38\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     39\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0mrun\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 40\u001b[0;31m         \u001b[0msat\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0msolve\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     41\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0msat\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mFalse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     42\u001b[0m             \u001b[0;32mreturn\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36msolve\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m     51\u001b[0m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mnumber_of_runs\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;36m0\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     52\u001b[0m         \u001b[0;32mwhile\u001b[0m \u001b[0;32mnot\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mare_all_variables_assigned\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 53\u001b[0;31m             \u001b[0mconf_cls\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0munit_propagate\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     54\u001b[0m             \u001b[0;32mif\u001b[0m \u001b[0mconf_cls\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mnot\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     55\u001b[0m                 \u001b[0;31m# there is conflict in unit propagation\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36munit_propagate\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    141\u001b[0m             \u001b[0mpropagate_queue\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mdeque\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    142\u001b[0m             \u001b[0;32mfor\u001b[0m \u001b[0mclause\u001b[0m \u001b[0;32min\u001b[0m \u001b[0;34m[\u001b[0m\u001b[0mx\u001b[0m \u001b[0;32mfor\u001b[0m \u001b[0mx\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mclauses\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0munion\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mlearnts\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 143\u001b[0;31m                 \u001b[0mc_val\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mcompute_clause\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mclause\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    144\u001b[0m                 \u001b[0;32mif\u001b[0m \u001b[0mc_val\u001b[0m \u001b[0;34m==\u001b[0m \u001b[0mTRUE\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    145\u001b[0m                     \u001b[0;32mcontinue\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36mcompute_clause\u001b[0;34m(self, clause)\u001b[0m\n\u001b[1;32m     87\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     88\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0mcompute_clause\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mclause\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 89\u001b[0;31m         \u001b[0mvalues\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mlist\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mmap\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mcompute_value\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mclause\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     90\u001b[0m         \u001b[0mvalue\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mUNASSIGN\u001b[0m \u001b[0;32mif\u001b[0m \u001b[0mUNASSIGN\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mvalues\u001b[0m \u001b[0;32melse\u001b[0m \u001b[0mmax\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mvalues\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     91\u001b[0m         \u001b[0;32mreturn\u001b[0m \u001b[0mvalue\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/deepsat/deepsat/cdcl.py\u001b[0m in \u001b[0;36mcompute_value\u001b[0;34m(self, literal)\u001b[0m\n\u001b[1;32m     75\u001b[0m         \u001b[0;32mreturn\u001b[0m \u001b[0;32mTrue\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     76\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 77\u001b[0;31m     \u001b[0;32mdef\u001b[0m \u001b[0mcompute_value\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mliteral\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     78\u001b[0m         \"\"\"\n\u001b[1;32m     79\u001b[0m         \u001b[0mCompute\u001b[0m \u001b[0mthe\u001b[0m \u001b[0mvalue\u001b[0m \u001b[0mof\u001b[0m \u001b[0mthe\u001b[0m \u001b[0mliteral\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0mcould\u001b[0m \u001b[0mbe\u001b[0m \u001b[0;34m-\u001b[0m\u001b[0;34m/\u001b[0m\u001b[0mve\u001b[0m \u001b[0;32mor\u001b[0m \u001b[0;34m+\u001b[0m\u001b[0;34m/\u001b[0m\u001b[0mve\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;32mfrom\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m: "
+     ]
+    }
+   ],
+   "source": [
+    "print_all(100, 2000, 70)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print_all(100, 2000, 90)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print_all(110, 2000, 110)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.5.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
