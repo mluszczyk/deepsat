@@ -31,6 +31,9 @@ tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
 tf.flags.DEFINE_bool("attention", True, "Should attention be used.")
+tf.flags.DEFINE_bool("real_sum", False, "Real sum for aggregation")
+tf.flags.DEFINE_bool("softmax_attention", False, "Softmax attention (otherwise sigmoid)")
+tf.flags.DEFINE_float("gradient_clip", 0.0, "0.0 is no clipping")
 
 
 FLAGS = tf.flags.FLAGS
@@ -135,11 +138,18 @@ class Graph:
         def aggregate(Q, K, V, conn):
             if ATTENTION:
                 QtimesK = tf.matmul(Q, K, transpose_b=True)
-                norm_weights = tf.multiply(tf.sigmoid(QtimesK), conn)
+                if FLAGS.softmax_attention:
+                  norm_weights = tf.multiply(tf.nn.softmax(QtimesK), conn)
+                else:
+                  norm_weights = tf.multiply(tf.sigmoid(QtimesK), conn)
             else:
                 unnorm_weights = conn
-                norm_weights = tf.div(unnorm_weights,
-                                      1.0 + tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
+                if FLAGS.real_sum:
+                    norm_weights = tf.div(unnorm_weights,
+                                          tf.tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
+                else:
+                    norm_weights = tf.div(unnorm_weights,
+                                          1.0 + tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
             aggr_V = tf.matmul(norm_weights, V)
             return aggr_V
 
@@ -321,7 +331,9 @@ def model_fn(features, labels, mode, params):
 
     elif mode == tf.estimator.ModeKeys.TRAIN:
         loss = graph.loss
-        optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+        optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate,)
+        if FLAGS.gradient_clip != 0.0:
+            optimizer = tf.contrib.estimator.clip_gradients_by_norm(optimizer, clip_norm=FLAGS.gradient_clip)
 
         if FLAGS.use_tpu:
             optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
