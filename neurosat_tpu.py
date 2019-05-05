@@ -140,6 +140,8 @@ class Graph:
                 QtimesK = tf.matmul(Q, K, transpose_b=True)
                 if FLAGS.softmax_attention:
                   norm_weights = tf.multiply(tf.nn.softmax(QtimesK), conn)
+                  sum_for_row = tf.reduce_sum(norm_weights, axis=-1, keepdims=True)
+                  norm_weights /= (sum_for_row + 0.000000000000001)
                 else:
                   norm_weights = tf.multiply(tf.sigmoid(QtimesK), conn)
             else:
