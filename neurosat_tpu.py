@@ -31,6 +31,7 @@ tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
 tf.flags.DEFINE_bool("attention", True, "Should attention be used.")
+tf.flags.DEFINE_bool("lstm", False, "Should LSTM aggregation be used.")
 tf.flags.DEFINE_bool("real_sum", False, "Real sum for aggregation")
 tf.flags.DEFINE_bool("softmax_attention", False, "Softmax attention (otherwise sigmoid)")
 tf.flags.DEFINE_float("gradient_clip", 0.0, "0.0 is no clipping")
@@ -53,6 +54,8 @@ DEFAULT_SETTINGS = {
     "HIDDEN_LAYERS": [128, 128],
     "HIDDEN_ACTIVATION": tf.nn.relu,
     "EMBED_ACTIVATION": tf.nn.tanh,
+
+    "LSTM_UPDATE": True,
 
 
     "POLICY_LOSS_WEIGHT": 1,
@@ -118,6 +121,7 @@ class Graph:
         POLICY_LOSS_WEIGHT = settings["POLICY_LOSS_WEIGHT"]
         LEVEL_NUMBER = FLAGS.level_number
         EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
+        LSTM_UPDATE = settings["LSTM_UPDATE"]
         ATTENTION = FLAGS.attention
 
         def basic_MLP(source, name, target_dimension=None, hidden_layers=None, end_activation=None):
@@ -148,12 +152,41 @@ class Graph:
                 unnorm_weights = conn
                 if FLAGS.real_sum:
                     norm_weights = tf.div(unnorm_weights,
-                                          tf.tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
+                                          tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
                 else:
                     norm_weights = tf.div(unnorm_weights,
                                           1.0 + tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
             aggr_V = tf.matmul(norm_weights, V)
             return aggr_V
+
+        def update(preembeddings, cellstates, name):
+            if not LSTM_UPDATE:
+                new_embeddings = basic_MLP(preembeddings, name, end_activation=EMBED_ACTIVATION)
+                new_cellstates = None
+            if LSTM_UPDATE:
+                prev_hidden = preembeddings
+                prev_cellstates = cellstates
+                prev_hidden_and_cellstates = tf.concat([prev_hidden, prev_cellstates], axis=-1)
+
+                i = tf.layers.dense(
+                    prev_hidden_and_cellstates, EMBEDDING_SIZE,
+                    activation=tf.nn.sigmoid, name='{}_i_lstm'.format(name), reuse=tf.AUTO_REUSE)
+                f = tf.layers.dense(
+                    prev_hidden_and_cellstates, EMBEDDING_SIZE,
+                    activation=tf.nn.sigmoid, name='{}_f_lstm'.format(name), reuse=tf.AUTO_REUSE)
+
+                cellstates = tf.multiply(f, prev_cellstates) + tf.layers.dense(
+                    prev_hidden, EMBEDDING_SIZE,
+                    activation=tf.nn.tanh, name='{}_cellstate_lstm'.format(name), reuse=tf.AUTO_REUSE)
+
+                o = tf.layers.dense(
+                    prev_hidden_and_cellstates, EMBEDDING_SIZE,
+                    activation=tf.nn.sigmoid, name='{}_o_lstm'.format(name), reuse=tf.AUTO_REUSE)
+                hidden = tf.multiply(o, tf.nn.tanh(cellstates))
+                new_embeddings = hidden
+                new_cellstates = cellstates
+            return new_embeddings, new_cellstates
+
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
             initial_var_embedding = tf.get_variable(
@@ -174,6 +207,33 @@ class Graph:
             clause_embeddings = tf.tile(
                 tf.reshape(initial_clause_embedding, [1, 1, EMBEDDING_SIZE]),
                 [batch_size, clause_num, 1])
+
+            if LSTM_UPDATE:
+
+                initial_var_cellstate = tf.get_variable(
+                    name='init_var_cellstate',
+                    shape=[EMBEDDING_SIZE],
+                    initializer=tf.random_uniform_initializer(-1., 1))
+                positive_literal_cellstates = tf.tile(
+                    tf.reshape(initial_var_cellstate, [1, 1, EMBEDDING_SIZE]),
+                    [batch_size, variable_num, 1])
+                negative_literal_cellstates = tf.tile(
+                    tf.reshape(initial_var_cellstate, [1, 1, EMBEDDING_SIZE]),
+                    [batch_size, variable_num, 1])
+
+                initial_clause_cellstate = tf.get_variable(
+                    name='init_clause_cellstate',
+                    shape=[EMBEDDING_SIZE],
+                    initializer=tf.random_uniform_initializer(-1., 1))
+                clause_cellstates = tf.tile(
+                    tf.reshape(initial_clause_cellstate, [1, 1, EMBEDDING_SIZE]),
+                    [batch_size, clause_num, 1])
+            else:
+                positive_literal_cellstates = None
+                negative_literal_cellstates = None
+
+                clause_cellstates = None
+
 
         self.sat_list = []  # sat prediction level by level (rounded)
         self.policy_list = []  # policy prediction level by level (rounded)
@@ -226,12 +286,11 @@ class Graph:
                 positive_literal_preembeddings = tf.concat([pos4pos_V, neg4pos_V, cls4pos_aggr_V], axis=-1)
                 negative_literal_preembeddings = tf.concat([neg4neg_V, pos4neg_V, cls4neg_aggr_V], axis=-1)
 
-                clause_embeddings = basic_MLP(clause_preembeddings, 'cls_pre2emb', end_activation=EMBED_ACTIVATION)
-
-                positive_literal_embeddings = basic_MLP(
-                    positive_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
-                negative_literal_embeddings = basic_MLP(
-                    negative_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                clause_embeddings, clause_cellstates = update(clause_preembeddings, clause_cellstates, 'cls_pre2emb')
+                positive_literal_embeddings, positive_literal_cellstates = update(
+                    positive_literal_preembeddings, positive_literal_cellstates, 'lit_pre2emb')
+                negative_literal_embeddings, negative_literal_cellstates = update(
+                    negative_literal_preembeddings, negative_literal_cellstates, 'lit_pre2emb')
             assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
             assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
@@ -443,25 +502,25 @@ def serving_input_receiver_fn():
 
 
 def main(argv):
-  del argv  # Unused.
-  tf.logging.set_verbosity(tf.logging.INFO)
+    del argv  # Unused.
+    tf.logging.set_verbosity(tf.logging.INFO)
 
-  if FLAGS.use_tpu:
+    if FLAGS.use_tpu:
       tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
           FLAGS.tpu,
       )
-  else:
+    else:
       tpu_cluster_resolver = None
 
-  run_config = tf.contrib.tpu.RunConfig(
+    run_config = tf.contrib.tpu.RunConfig(
       cluster=tpu_cluster_resolver,
       model_dir=FLAGS.model_dir,
       session_config=tf.ConfigProto(
           allow_soft_placement=True, log_device_placement=True),
       tpu_config=tf.contrib.tpu.TPUConfig(FLAGS.iterations),
-  )
+    )
 
-  estimator = tf.contrib.tpu.TPUEstimator(
+    estimator = tf.contrib.tpu.TPUEstimator(
       model_fn=model_fn,
       use_tpu=FLAGS.use_tpu,
       train_batch_size=FLAGS.batch_size,
@@ -470,20 +529,20 @@ def main(argv):
       config=run_config,
       export_to_tpu=False)
 
-  if FLAGS.train_steps > 0:
-    estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
+    if FLAGS.train_steps > 0:
+        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
 
-  if FLAGS.export_model:
-    estimator.export_saved_model(FLAGS.export_dir, serving_input_receiver_fn)
+    if FLAGS.export_model:
+        estimator.export_saved_model(FLAGS.export_dir, serving_input_receiver_fn)
 
-  if FLAGS.test_steps > 0:
-    estimator.evaluate(input_fn=eval_input_fn, steps=FLAGS.test_steps)
+    if FLAGS.test_steps > 0:
+        estimator.evaluate(input_fn=eval_input_fn, steps=FLAGS.test_steps)
 
-  # TPUEstimator.train *requires* a max_steps argument.
-  # TPUEstimator.evaluate *requires* a steps argument.
-  # Note that the number of examples used during evaluation is
-  # --eval_steps * --batch_size.
-  # So if you change --batch_size then change --eval_steps too.
+    # TPUEstimator.train *requires* a max_steps argument.
+    # TPUEstimator.evaluate *requires* a steps argument.
+    # Note that the number of examples used during evaluation is
+    # --eval_steps * --batch_size.
+    # So if you change --batch_size then change --eval_steps too.
 
 
 if __name__ == "__main__":
