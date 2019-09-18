@@ -30,11 +30,16 @@ tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
-tf.flags.DEFINE_bool("attention", True, "Should attention be used.")
-
+tf.flags.DEFINE_bool("attention", True, "Should attention be used. The sigmoid attention.")
+tf.flags.DEFINE_bool("relu_attention", False, "Should relu attention be used.")
+tf.flags.DEFINE_bool("softmax_sebastian", False, "Should softmax attention (Sebstian's version) be used.")
+tf.flags.DEFINE_bool("softmax_christian", False, "Should softmax attention (Christian's version) be used.")
+tf.flags.DEFINE_float("temperature", None, "Temperature - for K and Q dense layers.")
 
 FLAGS = tf.flags.FLAGS
 
+print("All flags {}".format(FLAGS))
+print("Temperature {}".format(FLAGS.temperature))
 
 DEFAULT_SETTINGS = {
 
@@ -116,8 +121,14 @@ class Graph:
         LEVEL_NUMBER = FLAGS.level_number
         EMBED_ACTIVATION = settings["EMBED_ACTIVATION"]
         ATTENTION = FLAGS.attention
+        RELU_ATTENTION = FLAGS.relu_attention
+        SOFTMAX_SEBASTIAN = FLAGS.softmax_sebastian
+        SOFTMAX_CHRISTIAN = FLAGS.softmax_christian
+        TEMPERATURE = FLAGS.temperature
+        LARGE = 10 # constant used in Christian's Softmax
 
-        def basic_MLP(source, name, target_dimension=None, hidden_layers=None, end_activation=None):
+        def basic_MLP(source, name, target_dimension=None, hidden_layers=None, 
+                      end_activation=None, temperature=None):
             if hidden_layers is None:
                 hidden_layers = HIDDEN_LAYERS
             if target_dimension is None:
@@ -129,18 +140,45 @@ class Graph:
                     activation=HIDDEN_ACTIVATION,
                     name='{}_hidden_{}'.format(name, index),
                     reuse=tf.AUTO_REUSE)
+            if temperature is not None:
+                kernel_initializer=tf.initializers.random_normal(stddev=temperature)
+            else:
+                kernel_initializer=None
+
             return tf.layers.dense(last_hidden, target_dimension, activation=end_activation, name='{}'.format(name),
-                                   reuse=tf.AUTO_REUSE)
+                                   reuse=tf.AUTO_REUSE, kernel_initializer=kernel_initializer)
 
         def aggregate(Q, K, V, conn):
-            if ATTENTION:
+            print("RELU_ATTENTION {}".format(RELU_ATTENTION))
+            print("ATTENTION aka SIGMOID ATTENTION {}".format(ATTENTION)) 
+            print("SOFTMAX SEBASTIAN {}".format(SOFTMAX_SEBASTIAN))
+            print("SOFTMAX CHRISTIAN {}".format(SOFTMAX_CHRISTIAN))
+            if RELU_ATTENTION:
+                # Q tensor Tensor("cls4lit_Q/BiasAdd:0", shape=(32, 1000, 128), dtype=float32)
+                # K tensor Tensor("lit4cls_K/BiasAdd:0", shape=(32, 200, 128), dtype=float32)
+                Q = tf.nn.l2_normalize(Q, axis=2)
+                K = tf.nn.l2_normalize(K, axis=2)
+                QtimesK = tf.matmul(Q, K, transpose_b=True)
+                norm_weights = tf.multiply(QtimesK, conn)
+            elif ATTENTION:
                 QtimesK = tf.matmul(Q, K, transpose_b=True)
                 norm_weights = tf.multiply(tf.sigmoid(QtimesK), conn)
+            elif SOFTMAX_SEBASTIAN:
+                QtimesK = tf.matmul(Q, K, transpose_b=True)
+                norm_weights = tf.multiply(tf.nn.softmax(QtimesK), conn)
+                sum_for_row = tf.reduce_sum(norm_weights, axis=-1, keepdims=True)
+                norm_weights /= (sum_for_row + 0.000000000000001)
+            elif SOFTMAX_CHRISTIAN:
+                QtimesK = tf.matmul(Q, K, transpose_b=True)
+                norm_weights = tf.nn.softmax(QtimesK - LARGE * (1 - conn), axis=-1)
             else:
                 unnorm_weights = conn
                 norm_weights = tf.div(unnorm_weights,
                                       1.0 + tf.reduce_sum(unnorm_weights, axis=-1, keep_dims=True))
-            aggr_V = tf.matmul(norm_weights, V)
+            if RELU_ATTENTION:
+                aggr_V = tf.nn.relu(tf.matmul(norm_weights, V))
+            else:
+                aggr_V = tf.matmul(norm_weights, V)
             return aggr_V
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
@@ -166,6 +204,8 @@ class Graph:
         self.sat_list = []  # sat prediction level by level (rounded)
         self.policy_list = []  # policy prediction level by level (rounded)
 
+        ANY_ATTENTION = ATTENTION or RELU_ATTENTION or SOFTMAX_CHRISTIAN or SOFTMAX_SEBASTIAN
+
         for level in range(LEVEL_NUMBER+1):
             if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
@@ -174,15 +214,15 @@ class Graph:
                 # clause preembeddings
                 cls4cls_V = basic_MLP(clause_embeddings, 'cls4cls_V')
 
-                if ATTENTION:
-                    cls4lit_Q = basic_MLP(clause_embeddings, 'cls4lit_Q')
+                if ANY_ATTENTION:
+                    cls4lit_Q = basic_MLP(clause_embeddings, 'cls4lit_Q', temperature=TEMPERATURE)
                 else:
                     cls4lit_Q = None
 
                 all_literal_embeddings = tf.concat([positive_literal_embeddings, negative_literal_embeddings],
                                                    axis=1)
-                if ATTENTION:
-                    lit4cls_K = basic_MLP(all_literal_embeddings, 'lit4cls_K')
+                if ANY_ATTENTION:
+                    lit4cls_K = basic_MLP(all_literal_embeddings, 'lit4cls_K', temperature=TEMPERATURE)
                 else:
                     lit4cls_K = None
                 lit4cls_V = basic_MLP(all_literal_embeddings, 'lit4cls_V')
@@ -199,11 +239,11 @@ class Graph:
                 pos4neg_V = basic_MLP(positive_literal_embeddings, 'neg4neg_V')
                 neg4pos_V = basic_MLP(negative_literal_embeddings, 'neg4neg_V')
 
-                if ATTENTION:
-                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'lit4cls_Q')
-                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'lit4cls_Q')
+                if ANY_ATTENTION:
+                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
+                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
 
-                    cls4lit_K = basic_MLP(clause_embeddings, 'cls4lit_K')
+                    cls4lit_K = basic_MLP(clause_embeddings, 'cls4lit_K', temperature=TEMPERATURE)
                 else:
                     pos4cls_Q, neg4cls_Q, cls4lit_K = None, None, None
                 cls4lit_V = basic_MLP(clause_embeddings, 'cls4lit_V')

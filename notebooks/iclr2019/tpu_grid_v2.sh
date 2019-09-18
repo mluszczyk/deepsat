@@ -6,7 +6,7 @@ function train {
 	RELU_ATTENTION="$6"
 	TPU_NAME="ng-tpu-$5"
 	BUCKET_NAME="neural-guidance-tensorflow"
-	MODEL_NAME="0409_relu_attention_henryk/${DIFFICULTY}_l${LEVEL_NUMBER}_a${ATTENTION}_ra${RELU_ATTENTION}_t${TPU_NAME}"
+	MODEL_NAME="0409_relu_attention_henryk_v2/${DIFFICULTY}_l${LEVEL_NUMBER}_a${ATTENTION}_ra${RELU_ATTENTION}_t${TPU_NAME}"
 
 	SESSION="$MODEL_NAME"
 	tmux new-s -d -s "$SESSION"
@@ -41,23 +41,23 @@ function sr100 {
 	train 100 "$TEMPLATE" "$1" "$2" "$3" "$4"
 }
 
-sr30 30 False 00 True
-sr30 30 True 10 False
-sr50 30 False 01 True
-sr50 30 True 11 False
-sr50 40 False 02 True
-sr50 40 True 12 False
-sr30 20 True 03 False
-sr30 20 False 13 True
-sr50 20 True 04 False
-sr50 20 False 14 True
-sr50 50 False 05 True
-sr50 50 True 15 False
-sr70 20 False 06 True
-sr70 20 True 16 False
-sr70 40 False 07 True
-sr70 40 True 17 False
-sr70 50 False 08 True
-sr70 50 True 18 False
-sr100 50 False 09 True
-sr100 50 True 19 False
+sr30 30 False 20 True
+sr30 30 True 30 False
+sr50 30 False 21 True
+sr50 30 True 31 False
+sr50 40 False 22 True
+sr50 40 True 32 False
+sr30 20 True 23 False
+sr30 20 False 33 True
+sr50 20 True 24 False
+sr50 20 False 34 True
+sr50 50 False 25 True
+sr50 50 True 35 False
+sr70 20 False 26 True
+sr70 20 True 36 False
+sr70 40 False 27 True
+sr70 40 True 37 False
+sr70 50 False 28 True
+sr70 50 True 38 False
+sr100 50 False 29 True
+sr100 50 True 39 False
