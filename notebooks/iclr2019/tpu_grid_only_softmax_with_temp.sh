@@ -9,7 +9,7 @@ function train {
 	TEMPERATURE="$9"
 	TPU_NAME="ng-tpu-$5"
 	BUCKET_NAME="neural-guidance-tensorflow"
-	MODEL_NAME="2009_relu_softmax_henryk/${DIFFICULTY}_l${LEVEL_NUMBER}_sa${ATTENTION}_ra${RELU_ATTENTION}_ss${SOFTMAX_SEBASTIAN}_sc${SOFTMAX_CHRISTIAN}_t${TEMPERATURE//./}_t${TPU_NAME}"
+	MODEL_NAME="2109_only_softmax_henryk/${DIFFICULTY}_l${LEVEL_NUMBER}_sa${ATTENTION}_ra${RELU_ATTENTION}_ss${SOFTMAX_SEBASTIAN}_sc${SOFTMAX_CHRISTIAN}_t${TEMPERATURE//./}_t${TPU_NAME}"
 
 	SESSION="$MODEL_NAME"
 	tmux new-s -d -s "$SESSION"
@@ -47,22 +47,8 @@ function sr100 {
 	train 100 "$TEMPLATE" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 }
 
-sr50 50 True 00 False False False 0.1
-sr50 50 True 01 False False False 0.3
-sr50 50 True 02 False False False 1
-sr50 50 True 03 False False False 3
+sr50 50 False 14 False True False 0.003
+sr50 50 False 15 False True False 0.01
+sr50 50 False 16 False True False 0.03
+sr50 50 False 17 False True False 0.001
 
-sr50 50 False 04 True False False 0.1
-sr50 50 False 05 True False False 0.3
-sr50 50 False 06 True False False 1
-sr50 50 False 07 True False False 3
-
-sr50 50 False 08 False True False 0.1
-sr50 50 False 09 False True False 0.3
-sr50 50 False 10 False True False 1
-sr50 50 False 11 False True False 3
-
-sr50 50 False 12 False False True 0.1
-sr50 50 False 13 False False True 0.3
-sr50 50 False 14 False False True 1
-sr50 50 False 15 False False True 3

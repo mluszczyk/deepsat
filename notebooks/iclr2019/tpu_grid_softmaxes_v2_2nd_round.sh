@@ -47,22 +47,8 @@ function sr100 {
 	train 100 "$TEMPLATE" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 }
 
-sr50 50 True 00 False False False 0.1
-sr50 50 True 01 False False False 0.3
-sr50 50 True 02 False False False 1
-sr50 50 True 03 False False False 3
+sr50 50 True 20 False False False 0.1
+sr50 50 True 21 False False False 0.3
+sr50 50 True 22 False False False 1
+sr50 50 True 23 False False False 3
 
-sr50 50 False 04 True False False 0.1
-sr50 50 False 05 True False False 0.3
-sr50 50 False 06 True False False 1
-sr50 50 False 07 True False False 3
-
-sr50 50 False 08 False True False 0.1
-sr50 50 False 09 False True False 0.3
-sr50 50 False 10 False True False 1
-sr50 50 False 11 False True False 3
-
-sr50 50 False 12 False False True 0.1
-sr50 50 False 13 False False True 0.3
-sr50 50 False 14 False False True 1
-sr50 50 False 15 False False True 3

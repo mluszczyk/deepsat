@@ -28,7 +28,7 @@ function train {
 }
 
 function sr30 {
-	TEMPLATE='python neurosat_tpu.py --use_tpu=True --tpu=$TPU_NAME --train_file=gs://$BUCKET_NAME/sr30_75x1e4_uncom_train/train_2*.tfrecord --test_file=gs://$BUCKET_NAME/sr30_10x1e4_uncom_test/* --train_steps=1200000 --test_steps=80 --model_dir=gs://$BUCKET_NAME/$MODEL_NAME --export_dir=gs://$BUCKET_NAME/export/$MODEL_NAME --variable_number=30 --clause_number=300 --train_files_gzipped=False --batch_size=128 --export_model --attention=$ATTENTION --relu_attention=$RELU_ATTENTION --softmax_sebastian=$SOFTMAX_SEBASTIAN --softmax_christian=$SOFTMAX_CHRISTIAN --temperature=$TEMPERATURE --level_number=$LEVEL_NUMBER'
+	TEMPLATE='python neurosat_tpu.py --use_tpu=True --tpu=$TPU_NAME --train_file=gs://$BUCKET_NAME/sr30_75x1e4_uncom_train/train_2*.tfrecord --test_file=gs://$BUCKET_NAME/sr30_10x1e4_uncom_test/* --train_steps=600000 --test_steps=80 --model_dir=gs://$BUCKET_NAME/$MODEL_NAME --export_dir=gs://$BUCKET_NAME/export/$MODEL_NAME --variable_number=30 --clause_number=300 --train_files_gzipped=False --batch_size=128 --export_model --attention=$ATTENTION --relu_attention=$RELU_ATTENTION --softmax_sebastian=$SOFTMAX_SEBASTIAN --softmax_christian=$SOFTMAX_CHRISTIAN --temperature=$TEMPERATURE --level_number=$LEVEL_NUMBER'
 	train 30 "$TEMPLATE" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 }
 
@@ -43,7 +43,7 @@ function sr70 {
 }
 
 function sr100 {
-	TEMPLATE='python neurosat_tpu.py --use_tpu=True --tpu=$TPU_NAME --train_file=gs://$BUCKET_NAME/sr_100_gz/train/train_1_sr_100.tfrecord.gz --test_file=gs://$BUCKET_NAME/sr_100_gz/test/test_9_sr_100.tfrecord.gz --train_steps=1200000 --test_steps=1000 --model_dir=gs://$BUCKET_NAME/$MODEL_NAME --export_dir=gs://$BUCKET_NAME/export/$MODEL_NAME --variable_number=100 --clause_number=1000 --train_files_gzipped=True --test_files_gzipped=True --batch_size=32 --attention=$ATTENTION --relu_attention=$RELU_ATTENTION --level_number=$LEVEL_NUMBER --export_model'
+	TEMPLATE='python neurosat_tpu.py --use_tpu=True --tpu=$TPU_NAME --train_file=gs://$BUCKET_NAME/sr_100_gz/train/train_1_sr_100.tfrecord.gz --test_file=gs://$BUCKET_NAME/sr_100_gz/test/test_9_sr_100.tfrecord.gz --train_steps=600000 --test_steps=1000 --model_dir=gs://$BUCKET_NAME/$MODEL_NAME --export_dir=gs://$BUCKET_NAME/export/$MODEL_NAME --variable_number=100 --clause_number=1000 --train_files_gzipped=True --test_files_gzipped=True --batch_size=32 --attention=$ATTENTION --relu_attention=$RELU_ATTENTION --level_number=$LEVEL_NUMBER --export_model'
 	train 100 "$TEMPLATE" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 }
 
