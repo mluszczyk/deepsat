@@ -34,6 +34,7 @@ tf.flags.DEFINE_bool("attention", True, "Should attention be used. The sigmoid a
 tf.flags.DEFINE_bool("relu_attention", False, "Should relu attention be used.")
 tf.flags.DEFINE_bool("softmax_sebastian", False, "Should softmax attention (Sebstian's version) be used.")
 tf.flags.DEFINE_bool("softmax_christian", False, "Should softmax attention (Christian's version) be used.")
+tf.flags.DEFINE_integer("num_heads", 1, "How many heads in attention.")
 tf.flags.DEFINE_float("temperature", None, "Temperature - for K and Q dense layers.")
 
 FLAGS = tf.flags.FLAGS
@@ -72,6 +73,44 @@ DEFAULT_SETTINGS = {
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
 }
+
+
+# split_heads and combine_heads based on
+# # https://github.com/tensorflow/models/blob/master/official/transformer/model/attention_layer.py
+def split_heads(x, num_heads):
+    """Split x into different heads, and transpose the resulting value.
+    The tensor is transposed to insure the inner dimensions hold the correct
+    values during the matrix multiplication.
+    Args:
+      x: A tensor with shape [batch_size, length, hidden_size]
+    Returns:
+      A tensor with shape [batch_size, num_heads, length, hidden_size/num_heads]
+    """
+    with tf.name_scope("split_heads"):
+        batch_size, length, hidden_size = x.shape
+
+        # Calculate depth of last dimension after it has been split.
+        depth = (hidden_size // num_heads)
+
+        # Split the last dimension
+        x = tf.reshape(x, [batch_size, length, num_heads, depth])
+
+        # Transpose the result
+        x = tf.transpose(x, [0, 2, 1, 3])
+        return x
+
+
+def combine_heads(x):
+    """Combine tensor that has been split.
+    Args:
+      x: A tensor [batch_size, num_heads, length, hidden_size/num_heads]
+    Returns:
+      A tensor with shape [batch_size, length, hidden_size]
+    """
+    with tf.name_scope("combine_heads"):
+        batch_size, num_heads, length, hidden_size_div = x.shape
+        x = tf.transpose(x, [0, 2, 1, 3])  # --> [batch, length, num_heads, depth]
+        return tf.reshape(x, [batch_size, length, hidden_size_div * num_heads])
 
 
 class Graph:
@@ -124,6 +163,7 @@ class Graph:
         RELU_ATTENTION = FLAGS.relu_attention
         SOFTMAX_SEBASTIAN = FLAGS.softmax_sebastian
         SOFTMAX_CHRISTIAN = FLAGS.softmax_christian
+        NUM_HEADS = FLAGS.num_heads
         TEMPERATURE = FLAGS.temperature
         LARGE = 10 # constant used in Christian's Softmax
 
@@ -153,6 +193,14 @@ class Graph:
             print("ATTENTION aka SIGMOID ATTENTION {}".format(ATTENTION)) 
             print("SOFTMAX SEBASTIAN {}".format(SOFTMAX_SEBASTIAN))
             print("SOFTMAX CHRISTIAN {}".format(SOFTMAX_CHRISTIAN))
+            if NUM_HEADS > 1:
+                Q = split_heads(Q, NUM_HEADS)
+                K = split_heads(K, NUM_HEADS)
+                V = split_heads(V, NUM_HEADS)
+                batch_size, first_dim, second_dim = conn.shape
+                conn = tf.tile(
+                    tf.reshape(conn, [batch_size, 1, first_dim, second_dim]),
+                    [1, NUM_HEADS, 1, 1])
             if RELU_ATTENTION:
                 # Q tensor Tensor("cls4lit_Q/BiasAdd:0", shape=(32, 1000, 128), dtype=float32)
                 # K tensor Tensor("lit4cls_K/BiasAdd:0", shape=(32, 200, 128), dtype=float32)
@@ -179,6 +227,8 @@ class Graph:
                 aggr_V = tf.nn.relu(tf.matmul(norm_weights, V))
             else:
                 aggr_V = tf.matmul(norm_weights, V)
+            if NUM_HEADS > 1:
+                aggr_V = combine_heads(aggr_V)
             return aggr_V
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
@@ -205,6 +255,9 @@ class Graph:
         self.policy_list = []  # policy prediction level by level (rounded)
 
         ANY_ATTENTION = ATTENTION or RELU_ATTENTION or SOFTMAX_CHRISTIAN or SOFTMAX_SEBASTIAN
+
+        # assert (NUM_HEADS > 1 implies attention)
+        assert ANY_ATTENTION or NUM_HEADS == 1
 
         for level in range(LEVEL_NUMBER+1):
             if level >= 1:
