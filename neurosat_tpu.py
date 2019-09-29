@@ -30,6 +30,7 @@ tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
+tf.flags.DEFINE_bool("shared_weights", True, "Should weights be shared acroos levels.")
 tf.flags.DEFINE_bool("attention", True, "Should attention be used. The sigmoid attention.")
 tf.flags.DEFINE_bool("relu_attention", False, "Should relu attention be used.")
 tf.flags.DEFINE_bool("softmax_sebastian", False, "Should softmax attention (Sebstian's version) be used.")
@@ -164,6 +165,7 @@ class Graph:
         SOFTMAX_SEBASTIAN = FLAGS.softmax_sebastian
         SOFTMAX_CHRISTIAN = FLAGS.softmax_christian
         NUM_HEADS = FLAGS.num_heads
+        SHARED_WEIGHTS = FLAGS.shared_weights
         TEMPERATURE = FLAGS.temperature
         LARGE = 10 # constant used in Christian's Softmax
 
@@ -260,25 +262,26 @@ class Graph:
         assert ANY_ATTENTION or NUM_HEADS == 1
 
         for level in range(LEVEL_NUMBER+1):
+            lstr = 'ALL' if SHARED_WEIGHTS else str(level)
             if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
                 # clause preembeddings
-                cls4cls_V = basic_MLP(clause_embeddings, 'cls4cls_V')
+                cls4cls_V = basic_MLP(clause_embeddings, 'l{}_cls4cls_V'.format(lstr))
 
                 if ANY_ATTENTION:
-                    cls4lit_Q = basic_MLP(clause_embeddings, 'cls4lit_Q', temperature=TEMPERATURE)
+                    cls4lit_Q = basic_MLP(clause_embeddings, 'l{}_cls4lit_Q'.format(lstr), temperature=TEMPERATURE)
                 else:
                     cls4lit_Q = None
 
                 all_literal_embeddings = tf.concat([positive_literal_embeddings, negative_literal_embeddings],
                                                    axis=1)
                 if ANY_ATTENTION:
-                    lit4cls_K = basic_MLP(all_literal_embeddings, 'lit4cls_K', temperature=TEMPERATURE)
+                    lit4cls_K = basic_MLP(all_literal_embeddings, 'l{}_lit4cls_K'.format(lstr), temperature=TEMPERATURE)
                 else:
                     lit4cls_K = None
-                lit4cls_V = basic_MLP(all_literal_embeddings, 'lit4cls_V')
+                lit4cls_V = basic_MLP(all_literal_embeddings, 'l{}_lit4cls_V'.format(lstr))
 
                 lit4cls_aggr_V = aggregate(cls4lit_Q, lit4cls_K, lit4cls_V,
                                            tf.transpose(all_connections, perm=[0, 2, 1]))
@@ -286,20 +289,20 @@ class Graph:
                 clause_preembeddings = tf.concat([cls4cls_V, lit4cls_aggr_V], axis=-1)
 
                 # literal preembeddings
-                pos4pos_V = basic_MLP(positive_literal_embeddings, 'lit4lit_V')
-                neg4neg_V = basic_MLP(negative_literal_embeddings, 'lit4lit_V')
+                pos4pos_V = basic_MLP(positive_literal_embeddings, 'l{}_lit4lit_V'.format(lstr))
+                neg4neg_V = basic_MLP(negative_literal_embeddings, 'l{}_lit4lit_V'.format(lstr))
 
-                pos4neg_V = basic_MLP(positive_literal_embeddings, 'neg4neg_V')
-                neg4pos_V = basic_MLP(negative_literal_embeddings, 'neg4neg_V')
+                pos4neg_V = basic_MLP(positive_literal_embeddings, 'l{}_neg4neg_V'.format(lstr))
+                neg4pos_V = basic_MLP(negative_literal_embeddings, 'l{}_neg4neg_V'.format(lstr))
 
                 if ANY_ATTENTION:
-                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
-                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
+                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'l{}_lit4cls_Q'.format(lstr), temperature=TEMPERATURE)
+                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'l{}_lit4cls_Q'.format(lstr), temperature=TEMPERATURE)
 
-                    cls4lit_K = basic_MLP(clause_embeddings, 'cls4lit_K', temperature=TEMPERATURE)
+                    cls4lit_K = basic_MLP(clause_embeddings, 'l{}_cls4lit_K'.format(lstr), temperature=TEMPERATURE)
                 else:
                     pos4cls_Q, neg4cls_Q, cls4lit_K = None, None, None
-                cls4lit_V = basic_MLP(clause_embeddings, 'cls4lit_V')
+                cls4lit_V = basic_MLP(clause_embeddings, 'l{}_cls4lit_V'.format(lstr))
 
                 cls4pos_aggr_V = aggregate(pos4cls_Q, cls4lit_K, cls4lit_V, positive_connections)
                 cls4neg_aggr_V = aggregate(neg4cls_Q, cls4lit_K, cls4lit_V, negative_connections)
@@ -307,26 +310,26 @@ class Graph:
                 positive_literal_preembeddings = tf.concat([pos4pos_V, neg4pos_V, cls4pos_aggr_V], axis=-1)
                 negative_literal_preembeddings = tf.concat([neg4neg_V, pos4neg_V, cls4neg_aggr_V], axis=-1)
 
-                clause_embeddings = basic_MLP(clause_preembeddings, 'cls_pre2emb', end_activation=EMBED_ACTIVATION)
+                clause_embeddings = basic_MLP(clause_preembeddings, 'l{}_cls_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
 
                 positive_literal_embeddings = basic_MLP(
-                    positive_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                    positive_literal_preembeddings, 'l{}_lit_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
                 negative_literal_embeddings = basic_MLP(
-                    negative_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                    negative_literal_preembeddings, 'l{}_lit_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
             assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
             assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
             self.positive_policy_logits = tf.layers.dense(
-                positive_literal_embeddings, 1, name='policy', reuse=reuse)
+                positive_literal_embeddings, 1, name='l{}_policy'.format(lstr), reuse=reuse)
             self.negative_policy_logits = tf.layers.dense(
-                negative_literal_embeddings, 1, name='policy', reuse=reuse)
+                negative_literal_embeddings, 1, name='l{}_policy'.format(lstr), reuse=reuse)
             self.policy_logits = tf.concat([self.positive_policy_logits, self.negative_policy_logits], axis=2)
             assert_shape(self.policy_logits, [BATCH_SIZE, None, 2])
 
             self.sat_logits = (tf.reduce_sum(
-                tf.layers.dense(positive_literal_embeddings, 1, name='sat', reuse=reuse),
+                tf.layers.dense(positive_literal_embeddings, 1, name='l{}_sat'.format(lstr), reuse=reuse),
                 axis=[1, 2]) + tf.reduce_sum(
-                tf.layers.dense(negative_literal_embeddings, 1, name='sat', reuse=reuse),
+                tf.layers.dense(negative_literal_embeddings, 1, name='l{}_sat'.format(lstr), reuse=reuse),
                 axis=[1, 2]))
             assert_shape(self.sat_logits, [BATCH_SIZE])
 
@@ -337,13 +340,13 @@ class Graph:
 
             self.policy_loss = tf.losses.sigmoid_cross_entropy(
                 self.policy_labels, self.policy_logits_for_cmp)
-            self.policy_probabilities = tf.sigmoid(self.policy_logits, name='policy_prob')
+            self.policy_probabilities = tf.sigmoid(self.policy_logits, name='l{}_policy_prob'.format(lstr))
             self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
             self.policy_weights = tf.reshape(self.sat_labels, [batch_size, 1, 1])
             self.policy_list.append(tf.round(self.policy_probabilities_for_cmp))
 
             self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
-            self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
+            self.sat_probabilities = tf.sigmoid(self.sat_logits, name='l{}_sat_prob'.format(lstr))
             self.sat_list.append(tf.round(self.sat_probabilities))
 
             # we do not want to count unsat into policy_error
