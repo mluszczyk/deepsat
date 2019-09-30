@@ -31,6 +31,9 @@ tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
 tf.flags.DEFINE_bool("shared_weights", True, "Should weights be shared acroos levels.")
+tf.flags.DEFINE_integer("start_sharing_level", -1, "At which level weights start to be shared. "
+                                                   "Only applicable if shared_weights is False. "
+                                                   "-1 for no sharing at all (default).")
 tf.flags.DEFINE_bool("attention", True, "Should attention be used. The sigmoid attention.")
 tf.flags.DEFINE_bool("relu_attention", False, "Should relu attention be used.")
 tf.flags.DEFINE_bool("softmax_sebastian", False, "Should softmax attention (Sebstian's version) be used.")
@@ -166,6 +169,7 @@ class Graph:
         SOFTMAX_CHRISTIAN = FLAGS.softmax_christian
         NUM_HEADS = FLAGS.num_heads
         SHARED_WEIGHTS = FLAGS.shared_weights
+        START_SHARING_LEVEL = FLAGS.start_sharing_level
         TEMPERATURE = FLAGS.temperature
         LARGE = 10 # constant used in Christian's Softmax
 
@@ -262,7 +266,14 @@ class Graph:
         assert ANY_ATTENTION or NUM_HEADS == 1
 
         for level in range(LEVEL_NUMBER+1):
-            lstr = 'ALL' if SHARED_WEIGHTS else str(level)
+            if SHARED_WEIGHTS or (START_SHARING_LEVEL != -1 and level >= START_SHARING_LEVEL):
+                print('LEVEL {} has SHARED weights'.format(level))
+                lstr = 'ALL'
+            else:
+                print('LEVEL {} has NON-SHARED weights'.format(level))
+                lstr = str(level)
+
+
             if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
