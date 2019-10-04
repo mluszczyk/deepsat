@@ -30,10 +30,15 @@ tf.flags.DEFINE_float("learning_rate", 0.00001, "Learning rate.")
 tf.flags.DEFINE_bool("train_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("test_files_gzipped", False, "Are train files gzipped.")
 tf.flags.DEFINE_bool("export_model", False, "Export saved model for prediction.")
+tf.flags.DEFINE_bool("shared_weights", True, "Should weights be shared acroos levels.")
+tf.flags.DEFINE_integer("start_sharing_level", -1, "At which level weights start to be shared. "
+                                                   "Only applicable if shared_weights is False. "
+                                                   "-1 for no sharing at all (default).")
 tf.flags.DEFINE_bool("attention", True, "Should attention be used. The sigmoid attention.")
 tf.flags.DEFINE_bool("relu_attention", False, "Should relu attention be used.")
 tf.flags.DEFINE_bool("softmax_sebastian", False, "Should softmax attention (Sebstian's version) be used.")
 tf.flags.DEFINE_bool("softmax_christian", False, "Should softmax attention (Christian's version) be used.")
+tf.flags.DEFINE_integer("num_heads", 1, "How many heads in attention.")
 tf.flags.DEFINE_float("temperature", None, "Temperature - for K and Q dense layers.")
 
 FLAGS = tf.flags.FLAGS
@@ -74,6 +79,44 @@ DEFAULT_SETTINGS = {
 
     "MODEL_DIR": "gs://ng-training-data",  # this should go to train_policy
 }
+
+
+# split_heads and combine_heads based on
+# # https://github.com/tensorflow/models/blob/master/official/transformer/model/attention_layer.py
+def split_heads(x, num_heads):
+    """Split x into different heads, and transpose the resulting value.
+    The tensor is transposed to insure the inner dimensions hold the correct
+    values during the matrix multiplication.
+    Args:
+      x: A tensor with shape [batch_size, length, hidden_size]
+    Returns:
+      A tensor with shape [batch_size, num_heads, length, hidden_size/num_heads]
+    """
+    with tf.name_scope("split_heads"):
+        batch_size, length, hidden_size = x.shape
+
+        # Calculate depth of last dimension after it has been split.
+        depth = (hidden_size // num_heads)
+
+        # Split the last dimension
+        x = tf.reshape(x, [batch_size, length, num_heads, depth])
+
+        # Transpose the result
+        x = tf.transpose(x, [0, 2, 1, 3])
+        return x
+
+
+def combine_heads(x):
+    """Combine tensor that has been split.
+    Args:
+      x: A tensor [batch_size, num_heads, length, hidden_size/num_heads]
+    Returns:
+      A tensor with shape [batch_size, length, hidden_size]
+    """
+    with tf.name_scope("combine_heads"):
+        batch_size, num_heads, length, hidden_size_div = x.shape
+        x = tf.transpose(x, [0, 2, 1, 3])  # --> [batch, length, num_heads, depth]
+        return tf.reshape(x, [batch_size, length, hidden_size_div * num_heads])
 
 
 class Graph:
@@ -126,6 +169,9 @@ class Graph:
         RELU_ATTENTION = FLAGS.relu_attention
         SOFTMAX_SEBASTIAN = FLAGS.softmax_sebastian
         SOFTMAX_CHRISTIAN = FLAGS.softmax_christian
+        NUM_HEADS = FLAGS.num_heads
+        SHARED_WEIGHTS = FLAGS.shared_weights
+        START_SHARING_LEVEL = FLAGS.start_sharing_level
         TEMPERATURE = FLAGS.temperature
         LARGE = 10 # constant used in Christian's Softmax
 
@@ -157,6 +203,14 @@ class Graph:
             print("ATTENTION aka SIGMOID ATTENTION {}".format(ATTENTION)) 
             print("SOFTMAX SEBASTIAN {}".format(SOFTMAX_SEBASTIAN))
             print("SOFTMAX CHRISTIAN {}".format(SOFTMAX_CHRISTIAN))
+            if NUM_HEADS > 1:
+                Q = split_heads(Q, NUM_HEADS)
+                K = split_heads(K, NUM_HEADS)
+                V = split_heads(V, NUM_HEADS)
+                batch_size, first_dim, second_dim = conn.shape
+                conn = tf.tile(
+                    tf.reshape(conn, [batch_size, 1, first_dim, second_dim]),
+                    [1, NUM_HEADS, 1, 1])
             if RELU_ATTENTION:
                 # Q tensor Tensor("cls4lit_Q/BiasAdd:0", shape=(32, 1000, 128), dtype=float32)
                 # K tensor Tensor("lit4cls_K/BiasAdd:0", shape=(32, 200, 128), dtype=float32)
@@ -183,6 +237,8 @@ class Graph:
                 aggr_V = tf.nn.relu(tf.matmul(norm_weights, V))
             else:
                 aggr_V = tf.matmul(norm_weights, V)
+            if NUM_HEADS > 1:
+                aggr_V = combine_heads(aggr_V)
             return aggr_V
 
         with tf.variable_scope("graph_net", reuse=tf.AUTO_REUSE):
@@ -210,26 +266,37 @@ class Graph:
 
         ANY_ATTENTION = ATTENTION or RELU_ATTENTION or SOFTMAX_CHRISTIAN or SOFTMAX_SEBASTIAN
 
+        # assert (NUM_HEADS > 1 implies attention)
+        assert ANY_ATTENTION or NUM_HEADS == 1
+
         for level in range(LEVEL_NUMBER+1):
+            if SHARED_WEIGHTS or (START_SHARING_LEVEL != -1 and level >= START_SHARING_LEVEL):
+                print('LEVEL {} has SHARED weights'.format(level))
+                lstr = 'ALL'
+            else:
+                print('LEVEL {} has NON-SHARED weights'.format(level))
+                lstr = str(level)
+
+
             if level >= 1:
                 assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
                 assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
                 # clause preembeddings
-                cls4cls_V = basic_MLP(clause_embeddings, 'cls4cls_V')
+                cls4cls_V = basic_MLP(clause_embeddings, 'l{}_cls4cls_V'.format(lstr))
 
                 if ANY_ATTENTION:
-                    cls4lit_Q = basic_MLP(clause_embeddings, 'cls4lit_Q', temperature=TEMPERATURE)
+                    cls4lit_Q = basic_MLP(clause_embeddings, 'l{}_cls4lit_Q'.format(lstr), temperature=TEMPERATURE)
                 else:
                     cls4lit_Q = None
 
                 all_literal_embeddings = tf.concat([positive_literal_embeddings, negative_literal_embeddings],
                                                    axis=1)
                 if ANY_ATTENTION:
-                    lit4cls_K = basic_MLP(all_literal_embeddings, 'lit4cls_K', temperature=TEMPERATURE)
+                    lit4cls_K = basic_MLP(all_literal_embeddings, 'l{}_lit4cls_K'.format(lstr), temperature=TEMPERATURE)
                 else:
                     lit4cls_K = None
-                lit4cls_V = basic_MLP(all_literal_embeddings, 'lit4cls_V')
+                lit4cls_V = basic_MLP(all_literal_embeddings, 'l{}_lit4cls_V'.format(lstr))
 
                 lit4cls_aggr_V = aggregate(cls4lit_Q, lit4cls_K, lit4cls_V,
                                            tf.transpose(all_connections, perm=[0, 2, 1]))
@@ -237,20 +304,20 @@ class Graph:
                 clause_preembeddings = tf.concat([cls4cls_V, lit4cls_aggr_V], axis=-1)
 
                 # literal preembeddings
-                pos4pos_V = basic_MLP(positive_literal_embeddings, 'lit4lit_V')
-                neg4neg_V = basic_MLP(negative_literal_embeddings, 'lit4lit_V')
+                pos4pos_V = basic_MLP(positive_literal_embeddings, 'l{}_lit4lit_V'.format(lstr))
+                neg4neg_V = basic_MLP(negative_literal_embeddings, 'l{}_lit4lit_V'.format(lstr))
 
-                pos4neg_V = basic_MLP(positive_literal_embeddings, 'neg4neg_V')
-                neg4pos_V = basic_MLP(negative_literal_embeddings, 'neg4neg_V')
+                pos4neg_V = basic_MLP(positive_literal_embeddings, 'l{}_neg4neg_V'.format(lstr))
+                neg4pos_V = basic_MLP(negative_literal_embeddings, 'l{}_neg4neg_V'.format(lstr))
 
                 if ANY_ATTENTION:
-                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
-                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'lit4cls_Q', temperature=TEMPERATURE)
+                    pos4cls_Q = basic_MLP(positive_literal_embeddings, 'l{}_lit4cls_Q'.format(lstr), temperature=TEMPERATURE)
+                    neg4cls_Q = basic_MLP(negative_literal_embeddings, 'l{}_lit4cls_Q'.format(lstr), temperature=TEMPERATURE)
 
-                    cls4lit_K = basic_MLP(clause_embeddings, 'cls4lit_K', temperature=TEMPERATURE)
+                    cls4lit_K = basic_MLP(clause_embeddings, 'l{}_cls4lit_K'.format(lstr), temperature=TEMPERATURE)
                 else:
                     pos4cls_Q, neg4cls_Q, cls4lit_K = None, None, None
-                cls4lit_V = basic_MLP(clause_embeddings, 'cls4lit_V')
+                cls4lit_V = basic_MLP(clause_embeddings, 'l{}_cls4lit_V'.format(lstr))
 
                 cls4pos_aggr_V = aggregate(pos4cls_Q, cls4lit_K, cls4lit_V, positive_connections)
                 cls4neg_aggr_V = aggregate(neg4cls_Q, cls4lit_K, cls4lit_V, negative_connections)
@@ -258,26 +325,26 @@ class Graph:
                 positive_literal_preembeddings = tf.concat([pos4pos_V, neg4pos_V, cls4pos_aggr_V], axis=-1)
                 negative_literal_preembeddings = tf.concat([neg4neg_V, pos4neg_V, cls4neg_aggr_V], axis=-1)
 
-                clause_embeddings = basic_MLP(clause_preembeddings, 'cls_pre2emb', end_activation=EMBED_ACTIVATION)
+                clause_embeddings = basic_MLP(clause_preembeddings, 'l{}_cls_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
 
                 positive_literal_embeddings = basic_MLP(
-                    positive_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                    positive_literal_preembeddings, 'l{}_lit_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
                 negative_literal_embeddings = basic_MLP(
-                    negative_literal_preembeddings, 'lit_pre2emb', end_activation=EMBED_ACTIVATION)
+                    negative_literal_preembeddings, 'l{}_lit_pre2emb'.format(lstr), end_activation=EMBED_ACTIVATION)
             assert_shape(positive_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
             assert_shape(negative_literal_embeddings, [BATCH_SIZE, None, EMBEDDING_SIZE])
 
             self.positive_policy_logits = tf.layers.dense(
-                positive_literal_embeddings, 1, name='policy', reuse=reuse)
+                positive_literal_embeddings, 1, name='l{}_policy'.format(lstr), reuse=reuse)
             self.negative_policy_logits = tf.layers.dense(
-                negative_literal_embeddings, 1, name='policy', reuse=reuse)
+                negative_literal_embeddings, 1, name='l{}_policy'.format(lstr), reuse=reuse)
             self.policy_logits = tf.concat([self.positive_policy_logits, self.negative_policy_logits], axis=2)
             assert_shape(self.policy_logits, [BATCH_SIZE, None, 2])
 
             self.sat_logits = (tf.reduce_sum(
-                tf.layers.dense(positive_literal_embeddings, 1, name='sat', reuse=reuse),
+                tf.layers.dense(positive_literal_embeddings, 1, name='l{}_sat'.format(lstr), reuse=reuse),
                 axis=[1, 2]) + tf.reduce_sum(
-                tf.layers.dense(negative_literal_embeddings, 1, name='sat', reuse=reuse),
+                tf.layers.dense(negative_literal_embeddings, 1, name='l{}_sat'.format(lstr), reuse=reuse),
                 axis=[1, 2]))
             assert_shape(self.sat_logits, [BATCH_SIZE])
 
@@ -288,13 +355,13 @@ class Graph:
 
             self.policy_loss = tf.losses.sigmoid_cross_entropy(
                 self.policy_labels, self.policy_logits_for_cmp)
-            self.policy_probabilities = tf.sigmoid(self.policy_logits, name='policy_prob')
+            self.policy_probabilities = tf.sigmoid(self.policy_logits, name='l{}_policy_prob'.format(lstr))
             self.policy_probabilities_for_cmp = tf.sigmoid(self.policy_logits_for_cmp)
             self.policy_weights = tf.reshape(self.sat_labels, [batch_size, 1, 1])
             self.policy_list.append(tf.round(self.policy_probabilities_for_cmp))
 
             self.sat_loss = tf.losses.sigmoid_cross_entropy(self.sat_labels, self.sat_logits)
-            self.sat_probabilities = tf.sigmoid(self.sat_logits, name='sat_prob')
+            self.sat_probabilities = tf.sigmoid(self.sat_logits, name='l{}_sat_prob'.format(lstr))
             self.sat_list.append(tf.round(self.sat_probabilities))
 
             # we do not want to count unsat into policy_error
