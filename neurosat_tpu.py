@@ -55,11 +55,9 @@ DEFAULT_SETTINGS = {
 
     # Neural net
     "EMBEDDING_SIZE": 128,
-    # "EMBEDDING_SIZE": 256,
 
     "POS_NEG_ACTIVATION": None,
-    # "HIDDEN_LAYERS": [128, 128],
-    "HIDDEN_LAYERS": [256, 256, 256],
+    "HIDDEN_LAYERS": [128, 128],
     "HIDDEN_ACTIVATION": tf.nn.relu,
     "EMBED_ACTIVATION": tf.nn.tanh,
 
