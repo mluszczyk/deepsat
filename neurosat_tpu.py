@@ -50,9 +50,11 @@ DEFAULT_SETTINGS = {
 
     # Neural net
     "EMBEDDING_SIZE": 128,
+    # "EMBEDDING_SIZE": 256,
 
     "POS_NEG_ACTIVATION": None,
-    "HIDDEN_LAYERS": [128, 128],
+    # "HIDDEN_LAYERS": [128, 128],
+    "HIDDEN_LAYERS": [256, 256, 256],
     "HIDDEN_ACTIVATION": tf.nn.relu,
     "EMBED_ACTIVATION": tf.nn.tanh,
 
@@ -145,8 +147,10 @@ class Graph:
             else:
                 kernel_initializer=None
 
+            # return tf.layers.dense(last_hidden, target_dimension, activation=end_activation, name='{}'.format(name),
+            #                       reuse=tf.AUTO_REUSE, kernel_initializer=kernel_initializer)
             return tf.layers.dense(last_hidden, target_dimension, activation=end_activation, name='{}'.format(name),
-                                   reuse=tf.AUTO_REUSE, kernel_initializer=kernel_initializer)
+                                   reuse=tf.AUTO_REUSE)
 
         def aggregate(Q, K, V, conn):
             print("RELU_ATTENTION {}".format(RELU_ATTENTION))
