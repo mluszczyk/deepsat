@@ -97,7 +97,11 @@ def split_heads(x, num_heads):
         depth = (hidden_size // num_heads)
 
         # Split the last dimension
-        x = tf.reshape(x, [batch_size, length, num_heads, depth])
+        x = tf.reshape(x, tf.convert_to_tensor([int(batch_size), int(length), int(num_heads), int(depth)]))
+        # For unknown reasons, the reshape was failing with conversion error in production. It was not reproducible on
+        # test at first. Adding tf.convert_to_tensor started reproducing error during testing. Adding explicit
+        # conversion of everything to int should fix the issue. For some reason, it didn't auto-convert tf.Dimension to
+        # int in evaluation.
 
         # Transpose the result
         x = tf.transpose(x, [0, 2, 1, 3])
@@ -114,7 +118,7 @@ def combine_heads(x):
     with tf.name_scope("combine_heads"):
         batch_size, num_heads, length, hidden_size_div = x.shape
         x = tf.transpose(x, [0, 2, 1, 3])  # --> [batch, length, num_heads, depth]
-        return tf.reshape(x, [batch_size, length, hidden_size_div * num_heads])
+        return tf.reshape(x, tf.convert_to_tensor([int(batch_size), int(length), int(hidden_size_div * num_heads)]))
 
 
 class Graph:
